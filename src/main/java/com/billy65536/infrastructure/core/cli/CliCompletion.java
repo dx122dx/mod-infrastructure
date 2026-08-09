@@ -15,6 +15,8 @@ import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 
+import com.billy65536.infrastructure.core.reflect.FlatConfigs;
+
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 
 /**
@@ -90,6 +92,50 @@ public final class CliCompletion {
     }
 
     public static Builder builder() { return new Builder(); }
+
+    /**
+     * 由 {@link FlatConfigs} 注解的扁平配置类快捷生成命令补全器（key=value 多段形式）。
+     *
+     * <p>等价于手工写：</p>
+     * <pre>{@code
+     * CliCompletion.builder()
+     *     .separators("")                          // 扁平键无 .:/ 层级
+     *     .assignment(true)                        // 选中键后补 '=' 并提示取值
+     *     .multiple(true)                          // 多个 key=value 以空格分隔
+     *     .keySource(ctx -> FlatConfigs.keysOf(configClass))
+     *     .build();
+     * }</pre>
+     *
+     * <p>候选键直接取自配置类上 {@link FlatConfigs.Key} 声明的别名，与
+     * {@link FlatConfigs#createFrom} 解析器物理同源：新增字段只需加注解即全自动补全，
+     * 杜绝命令里键名拼写漂移（如 {@code rivist} 与 {@code revisit} 不一致）。</p>
+     *
+     * @param configClass 带 {@link FlatConfigs.Key} 注解的扁平配置类
+     */
+    public static SuggestionProvider<FabricClientCommandSource> forFlatConfig(Class<?> configClass) {
+        return forFlatConfig(configClass, null);
+    }
+
+    /**
+     * 同上，并允许为各键提供取值候选：assignment 模式输入 {@code key=} 后触发，
+     * 由 {@code valueProvider} 按完整键返回其合法取值（如当前默认值、枚举项）。
+     * 返回 {@code null}/空表表示该键为自由文本、不提示取值。
+     *
+     * <p>{@code valueProvider} 形如 {@code (ctx, key) -> List.of(...)}；取值与命令上下文无关时，
+     * 第 2 参数用 {@code (ctx, key) -> f(key)} 包一层即可。</p>
+     */
+    public static SuggestionProvider<FabricClientCommandSource> forFlatConfig(
+            Class<?> configClass,
+            BiFunction<CommandContext<FabricClientCommandSource>, String, List<String>> valueProvider) {
+        List<String> keys = FlatConfigs.keysOf(configClass);
+        Builder b = builder()
+                .separators("")
+                .assignment(true)
+                .multiple(true)
+                .keySource(ctx -> keys);
+        if (valueProvider != null) b.valueProvider(valueProvider);
+        return b.build();
+    }
 
     // ==================== 当前条目的切分结果 ====================
 

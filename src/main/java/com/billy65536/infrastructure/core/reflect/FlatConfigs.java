@@ -365,7 +365,7 @@ public final class FlatConfigs {
             return s.charAt(0);
         }
         if (type.isEnum()) {
-            @SuppressWarnings({"unchecked", "rawtypes"})
+            @SuppressWarnings("rawtypes")
             Object e = Enum.valueOf((Class<? extends Enum>) type, s);
             return e;
         }

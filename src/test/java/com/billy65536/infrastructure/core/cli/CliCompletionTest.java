@@ -6,9 +6,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.Suggestion;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
+
+import com.billy65536.infrastructure.core.reflect.FlatConfigs;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -299,6 +302,47 @@ class CliCompletionTest {
                     .positional((ctx, completed) -> List.of("global", "beta"));
 
             assertEquals(List.of("global"), textsOf(buildPositional(input, start, b)));
+        }
+    }
+
+    @Nested
+    @DisplayName("forFlatConfig 快捷补全（FlatConfigs + CliCompletion）")
+    class FlatConfigShortcut {
+
+        /** 带 {@link FlatConfigs.Key} 注解的扁平配置类，用于验证键名自动成为补全候选。 */
+        static class SampleConfig {
+            @FlatConfigs.Key("interval") public Integer interval;
+            @FlatConfigs.Key("name")    public String  name;
+        }
+
+        private static List<String> suggestKeys(String input) throws CommandSyntaxException {
+            var p = CliCompletion.forFlatConfig(SampleConfig.class);
+            Suggestions s = p.getSuggestions(null, new SuggestionsBuilder(input, 0)).join();
+            return textsOf(s);
+        }
+
+        @Test
+        @DisplayName("配置类注解键自动成为补全候选，并带 '=' 提示赋值")
+        void suggestsAnnotatedKeys() throws Exception {
+            assertSameItems(List.of("interval=", "name="), suggestKeys(""));
+        }
+
+        @Test
+        @DisplayName("valueProvider 在 'key=' 后补全取值")
+        void suggestsValuesAfterEquals() throws Exception {
+            var p = CliCompletion.forFlatConfig(SampleConfig.class,
+                    (ctx, key) -> key.equals("interval") ? List.of("60") : List.of());
+            Suggestions s = p.getSuggestions(null, new SuggestionsBuilder("interval=", 0)).join();
+            assertSameItems(List.of("60"), textsOf(s));
+        }
+
+        @Test
+        @DisplayName("无 valueProvider 时取值为空，不越界崩溃")
+        void noValueProviderIsSafe() throws Exception {
+            Suggestions s = CliCompletion.forFlatConfig(SampleConfig.class)
+                    .getSuggestions(null, new SuggestionsBuilder("interval=", 0))
+                    .join();
+            assertTrue(s.getList().isEmpty(), "未提供取值候选时不应给出任何建议：" + textsOf(s));
         }
     }
 }
