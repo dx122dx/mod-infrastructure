@@ -1,4 +1,4 @@
-package com.billy65536.infrastructure.core.archive;
+package com.billy65536.infrastructure.util.archive;
 
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;

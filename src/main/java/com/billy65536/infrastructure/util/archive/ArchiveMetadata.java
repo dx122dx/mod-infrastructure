@@ -1,4 +1,4 @@
-package com.billy65536.infrastructure.core.archive;
+package com.billy65536.infrastructure.util.archive;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;

@@ -3,8 +3,6 @@ package com.billy65536.infrastructure;
 import java.util.List;
 import java.util.Locale;
 
-import com.billy65536.infrastructure.core.cli.ArgParser;
-import com.billy65536.infrastructure.core.cli.CliCompletion;
 import com.billy65536.infrastructure.core.config.ConfigAccessor;
 import com.billy65536.infrastructure.core.config.ConfigAccessException;
 import com.billy65536.infrastructure.core.config.ConfigDescriptor;
@@ -14,6 +12,8 @@ import com.billy65536.infrastructure.core.module.IModule;
 import com.billy65536.infrastructure.core.module.ModuleCommandRegistrar;
 import com.billy65536.infrastructure.core.module.ModuleRegistry;
 import com.billy65536.infrastructure.security.builtin.ConfigLocker;
+import com.billy65536.infrastructure.util.cli.ArgParser;
+import com.billy65536.infrastructure.util.cli.CliCompletion;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;

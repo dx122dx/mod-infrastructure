@@ -1,12 +1,12 @@
-package com.billy65536.infrastructure.core.reflect;
+package com.billy65536.infrastructure.util.reflect;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
+import com.billy65536.infrastructure.util.cli.ArgParser;
 
-import com.billy65536.infrastructure.core.cli.ArgParser;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 

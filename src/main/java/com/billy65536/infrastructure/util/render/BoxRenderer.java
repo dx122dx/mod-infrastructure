@@ -1,4 +1,4 @@
-package com.billy65536.infrastructure.core.render;
+package com.billy65536.infrastructure.util.render;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.VertexSorter;

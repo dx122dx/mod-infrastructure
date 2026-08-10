@@ -31,6 +31,8 @@
     "infrastructure.msg.info_config_count": "(%s entries)",
     "infrastructure.msg.module_debugger_name": "Debugger",
     "infrastructure.msg.module_debugger_desc": "Built-in debug module: run debug actions, toggle debug features, and inspect them via the /inf dbg command tree.",
+    "infrastructure.msg.module_utilities_name": "Utilities",
+    "infrastructure.msg.module_utilities_desc": "Built-in utilities module: provides common mod functionality.",
 
     "infrastructure.msg.module_not_found": "Module not found: %s",
     "infrastructure.msg.module_config_none": "Module %s has no registered config.",

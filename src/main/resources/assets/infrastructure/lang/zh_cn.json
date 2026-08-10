@@ -31,6 +31,8 @@
     "infrastructure.msg.info_config_count": "(%s 项)",
     "infrastructure.msg.module_debugger_name": "调试器",
     "infrastructure.msg.module_debugger_desc": "内置调试模块：执行调试动作、开关调试特性，并通过 /inf dbg 命令树查看它们。",
+    "infrastructure.msg.module_utilities_name": "实用工具",
+    "infrastructure.msg.module_utilities_desc": "内置实用工具模块：提供模组常用功能。",
 
     "infrastructure.msg.module_not_found": "未找到模块：%s",
     "infrastructure.msg.module_config_none": "模块 %s 未注册配置。",

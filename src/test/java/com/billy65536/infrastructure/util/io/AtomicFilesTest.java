@@ -1,4 +1,4 @@
-package com.billy65536.infrastructure.core.io;
+package com.billy65536.infrastructure.util.io;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

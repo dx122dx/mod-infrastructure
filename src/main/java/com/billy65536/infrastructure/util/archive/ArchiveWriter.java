@@ -1,6 +1,6 @@
-package com.billy65536.infrastructure.core.archive;
+package com.billy65536.infrastructure.util.archive;
 
-import com.billy65536.infrastructure.core.io.AtomicFiles;
+import com.billy65536.infrastructure.util.io.AtomicFiles;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 

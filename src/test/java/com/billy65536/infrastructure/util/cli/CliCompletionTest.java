@@ -1,4 +1,4 @@
-package com.billy65536.infrastructure.core.cli;
+package com.billy65536.infrastructure.util.cli;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -6,12 +6,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import com.billy65536.infrastructure.util.reflect.FlatConfigs;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.Suggestion;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
-
-import com.billy65536.infrastructure.core.reflect.FlatConfigs;
 
 import static org.junit.jupiter.api.Assertions.*;
 

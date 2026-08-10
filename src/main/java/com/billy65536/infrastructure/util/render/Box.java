@@ -1,4 +1,4 @@
-package com.billy65536.infrastructure.core.render;
+package com.billy65536.infrastructure.util.render;
 
 /**
  * 轴对齐包围盒 + 颜色，供 {@link BoxRenderer} 绘制线框高亮。

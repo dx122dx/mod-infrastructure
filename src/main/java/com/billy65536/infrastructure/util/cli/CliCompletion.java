@@ -1,4 +1,4 @@
-package com.billy65536.infrastructure.core.cli;
+package com.billy65536.infrastructure.util.cli;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -10,12 +10,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
+import com.billy65536.infrastructure.util.reflect.FlatConfigs;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
-
-import com.billy65536.infrastructure.core.reflect.FlatConfigs;
 
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 

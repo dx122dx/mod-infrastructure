@@ -192,7 +192,7 @@ public final class ConfigManager {
      * 补全：返回候选的<b>显式</b>完整路径串（{@code module:id/path}，段名始终展开，
      * 不做省略）。
      *
-     * <p>专门供 {@link com.billy65536.infrastructure.core.cli.CliCompletion} 的层级模式使用：
+     * <p>专门供 {@link com.billy65536.infrastructure.util.cli.CliCompletion} 的层级模式使用：
      * 显式含段名后才能构建出 {@code module → id → path} 三层字典树，使补全在输入命名空间
      * （如 {@code debugger:}）后正确展示配置段（如 {@code config/}、{@code feature/}），
      * 而非直接跳到字段层。与 {@link #suggestPaths(String)} 的省略形态互补。</p>

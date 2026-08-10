@@ -1,4 +1,4 @@
-package com.billy65536.infrastructure.core.reflect;
+package com.billy65536.infrastructure.util.reflect;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.billy65536.infrastructure.core.cli.ArgParser;
+import com.billy65536.infrastructure.util.cli.ArgParser;
 
 /**
  * 扁平配置类的通用反射工具，统一处理复制、合并、解析、格式化与键枚举。
@@ -45,7 +45,7 @@ import com.billy65536.infrastructure.core.cli.ArgParser;
  *
  * <p>除基本类型/枚举/String 外，字段类型可实现嵌套接口 {@link Serializable} 以声明自定义序列化。
  * 实现类须保证 <b>往返无损</b>：对任意实例 {@code x}，{@code deserialize(serialize(x)).equals(x)}
- * （或语义等价）。由于底层以 {@code key=value} 扁平语法分词（{@link com.billy65536.infrastructure.core.cli.ArgParser}
+ * （或语义等价）。由于底层以 {@code key=value} 扁平语法分词（{@link com.billy65536.infrastructure.util.cli.ArgParser}
  * 按首个 {@code =} 与空白切分），实现类的 {@link Serializable#serialize()} 输出<b>不得含未转义的
  * {@code =} 或空白</b>——否则会被误切断。确需嵌套含 {@code =}/空格 的值时，必须整体以引号包裹。</p>
  */

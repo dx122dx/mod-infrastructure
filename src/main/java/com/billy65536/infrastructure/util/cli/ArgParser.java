@@ -1,4 +1,4 @@
-package com.billy65536.infrastructure.core.cli;
+package com.billy65536.infrastructure.util.cli;
 
 import java.util.ArrayList;
 import java.util.List;
