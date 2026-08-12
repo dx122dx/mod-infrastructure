@@ -1,5 +1,7 @@
 package com.billy65536.infrastructure.util.archive;
 
+import com.google.gson.JsonElement;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -22,8 +24,9 @@ import java.util.zip.ZipFile;
  *   <li>{@link #openEntry(String)} / {@link #copyEntryTo(String, Path)} / {@link #entrySha256(String)} 单 entry 访问。</li>
  * </ul>
  *
- * <p>子类只需实现两个钩子：{@link #validateBusinessFields(List, List)} 与
- * {@link #requiredEntries()}，把「哪些字段算错、哪些 entry 必需」交给业务层，
+ * <p>子类实现三个钩子：{@link #expectedArchiveType()}（期望归档类型，可选）、
+ * {@link #validateBusinessFields(List, List)} 与 {@link #requiredEntries()}，
+ * 把「类型一致性、哪些字段算错、哪些 entry 必需」交给业务层，
  * 框架负责全部 I/O 与 SHA-256 比对。</p>
  *
  * <h2>旧包兼容</h2>
@@ -104,6 +107,8 @@ public abstract class ArchiveImage {
      *
      * <p>单次打开 ZIP 完成全部检查：</p>
      * <ol>
+     *   <li>框架级归档类型校验：{@link #expectedArchiveType()} 非空时，business 段
+     *       {@code type} 缺失视为错误、与期望不一致视为警告；</li>
      *   <li>回调 {@link #validateBusinessFields(List, List)} 收集业务错误/警告；</li>
      *   <li>通用完整性：必需 entry 必须实际存在；逐 {@code FileEntry} 比对 SHA-256；
      *       ZIP 内未声明的文件告警（框架元数据自身除外）。</li>
@@ -114,6 +119,18 @@ public abstract class ArchiveImage {
     public final ValidationResult validate() {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
+
+        // 框架级归档类型校验：期望类型已声明时，business.type 必须存在且一致
+        String expectedType = expectedArchiveType();
+        if (expectedType != null && !expectedType.isEmpty()) {
+            JsonElement typeEl = metadata().businessOrEmpty().get(ArchiveMetadata.BUSINESS_TYPE_KEY);
+            if (typeEl == null || !typeEl.isJsonPrimitive() || typeEl.getAsString().isEmpty()) {
+                errors.add("Missing archive type in business (expected " + expectedType + ")");
+            } else if (!expectedType.equals(typeEl.getAsString())) {
+                warnings.add("Archive type mismatch: expected " + expectedType
+                        + " but got " + typeEl.getAsString());
+            }
+        }
 
         validateBusinessFields(errors, warnings);
 
@@ -158,6 +175,18 @@ public abstract class ArchiveImage {
         }
 
         return ValidationResult.of(errors, warnings);
+    }
+
+    /**
+     * 期望归档类型钩子：子类返回业务归档类型标识（如 {@code "chunkscanner:db"}），
+     * 框架据此在 {@link #validate()} 中校验 business 段的 {@code type}。
+     *
+     * <p>返回 {@code null}（默认）表示不做框架级类型校验。</p>
+     *
+     * @return 期望的归档类型标识，或 {@code null} 表示不校验
+     */
+    protected String expectedArchiveType() {
+        return null;
     }
 
     /**

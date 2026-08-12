@@ -41,6 +41,13 @@ public record ArchiveMetadata(int formatVersion, String time,
     /** 当前元数据格式版本。 */
     public static final int FORMAT_VERSION = 1;
 
+    /**
+     * {@link #business()} 内用于声明归档类型的 key。
+     * 写入侧由 {@link ArchiveWriter#finish(String, JsonObject)} 强制提供；
+     * 读取侧由 {@link ArchiveImage#expectedArchiveType()} 校验一致性。
+     */
+    public static final String BUSINESS_TYPE_KEY = "type";
+
     /** 元数据 entry 名的前缀。 */
     private static final String ENTRY_PREFIX = "archive.";
 

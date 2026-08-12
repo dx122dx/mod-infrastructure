@@ -32,10 +32,13 @@ class ArchiveRoundTripTest {
         }
 
         @Override
+        protected String expectedArchiveType() {
+            return "test:kind";
+        }
+
+        @Override
         protected void validateBusinessFields(List<String> errors, List<String> warnings) {
-            if (metadata().businessOrEmpty().get("type") == null) {
-                errors.add("business.type missing");
-            }
+            // type 校验已由框架 expectedArchiveType() 承担，此处无额外业务校验
         }
 
         @Override
@@ -59,7 +62,7 @@ class ArchiveRoundTripTest {
                 w.addBytes("payload.txt", "payload-content".getBytes(StandardCharsets.UTF_8));
                 w.addBytes("metadata.json", "{\"k\":\"v\"}".getBytes(StandardCharsets.UTF_8));
             }
-            w.finish(business);
+            w.finish(type, business);
         }
         return zip;
     }
@@ -105,7 +108,7 @@ class ArchiveRoundTripTest {
         Path zip = temp.resolve("stored.zip");
         try (ArchiveWriter w = new ArchiveWriter(zip)) {
             w.addStored("database.zip", src);
-            w.finish(null);
+            w.finish("test:kind", null);
         }
 
         try (ZipFile zf = new ZipFile(zip.toFile())) {
@@ -164,7 +167,7 @@ class ArchiveRoundTripTest {
         biz.addProperty("type", "test:kind");
         try (ArchiveWriter w = new ArchiveWriter(zip)) {
             // 故意不写 payload.txt
-            w.finish(biz);
+            w.finish("test:kind", biz);
         }
         TestImage img = TestImage.open(zip);
         ValidationResult r = img.validate();
@@ -181,7 +184,7 @@ class ArchiveRoundTripTest {
             w.addBytes("payload.txt", "x".getBytes(StandardCharsets.UTF_8));
             w.addBytes("metadata.json", "{}".getBytes(StandardCharsets.UTF_8));
             w.addBytes("ghost.txt", "y".getBytes(StandardCharsets.UTF_8));
-            w.finish(biz);
+            w.finish("test:kind", biz);
         }
         TestImage img = TestImage.open(zip);
         ValidationResult r = img.validate();
@@ -191,18 +194,43 @@ class ArchiveRoundTripTest {
     }
 
     @Test
-    void validate_reports_business_error() throws IOException {
-        // 不写 business，触发 business.type missing 错误
-        Path zip = temp.resolve("nobiz.zip");
+    void finish_rejects_missing_type() throws IOException {
+        // finish 强制要求归档类型，缺失时直接拒绝
+        Path zip = temp.resolve("notype.zip");
         try (ArchiveWriter w = new ArchiveWriter(zip)) {
             w.addBytes("payload.txt", "x".getBytes(StandardCharsets.UTF_8));
             w.addBytes("metadata.json", "{}".getBytes(StandardCharsets.UTF_8));
-            w.finish(null);
+            assertThrows(IllegalArgumentException.class, () -> w.finish(null, null));
         }
-        TestImage img = TestImage.open(zip);
+        assertFalse(Files.exists(zip), "拒绝后不应落盘最终文件");
+    }
+
+    @Test
+    void finish_rejects_mismatched_type() throws IOException {
+        // business 已含不一致的 type 时应拒绝
+        Path zip = temp.resolve("badtype.zip");
+        JsonObject biz = new JsonObject();
+        biz.addProperty("type", "other:kind");
+        try (ArchiveWriter w = new ArchiveWriter(zip)) {
+            w.addBytes("payload.txt", "x".getBytes(StandardCharsets.UTF_8));
+            assertThrows(IllegalArgumentException.class, () -> w.finish("test:kind", biz));
+        }
+        assertFalse(Files.exists(zip), "拒绝后不应落盘最终文件");
+    }
+
+    @Test
+    void validate_reports_type_mismatch_warning() throws IOException {
+        // 类型不一致仅是警告，不致命
+        Path zip = buildArchive("test:kind", true, true);
+        JsonObject business = new JsonObject();
+        business.addProperty("type", "other:kind");
+        ArchiveMetadata meta = new ArchiveMetadata(
+                ArchiveMetadata.FORMAT_VERSION, ArchiveMetadata.nowTime(), List.of(), business);
+        TestImage img = new TestImage(zip, meta);
         ValidationResult r = img.validate();
-        assertFalse(r.valid());
-        assertTrue(r.errors().stream().anyMatch(s -> s.contains("business.type")));
+        assertTrue(r.valid(), "类型不一致不应致命: " + r.errors());
+        assertTrue(r.warnings().stream().anyMatch(s -> s.contains("type mismatch")),
+                "应报告类型不一致警告: " + r.warnings());
     }
 
     @Test

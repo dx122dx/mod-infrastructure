@@ -27,11 +27,11 @@ import java.util.zip.ZipOutputStream;
  * try (ArchiveWriter w = new ArchiveWriter(outFile)) {
  *     w.addFile("database.zip", dbZip);
  *     w.addBytes("regions.json", json.getBytes(UTF_8));
- *     w.finish(businessJson);   // 写 archive.<hex>.metadata.json、设 ZIP 注释、原子落盘
+ *     w.finish("chunkscanner:db", businessJson);   // 写 archive.<hex>.metadata.json、设 ZIP 注释、原子落盘
  * }
  * }</pre>
  *
- * <p>未调用 {@link #finish(JsonObject)} 就关闭（含异常）时，临时文件会被清理，
+ * <p>未调用 {@link #finish(String, JsonObject)} 就关闭（含异常）时，临时文件会被清理，
  * 不会留下半截归档，保证 try-with-resources 安全。</p>
  *
  * @see ArchiveImage
@@ -117,19 +117,37 @@ public final class ArchiveWriter implements AutoCloseable {
     /**
      * 写框架元数据、设 ZIP 注释、关流并原子落盘。
      *
+     * <p>归档类型为必填：校验非空后写入 business 段的 {@code type}（业务方已提供时校验一致性）。
+     * business 为 {@code null} 时框架新建空对象并补写 type。</p>
+     *
+     * @param type     归档类型标识（如 {@code "chunkscanner:db"}），必填且不可为空白
      * @param business 业务方自定义段（原样透传，可为 {@code null}）
      * @return 最终落盘的文件路径
-     * @throws IOException 如果写入或落盘失败
+     * @throws IllegalArgumentException 如果 type 缺失，或 business 已含不一致的 {@code type}
+     * @throws IOException              如果写入或落盘失败
      */
-    public Path finish(JsonObject business) throws IOException {
+    public Path finish(String type, JsonObject business) throws IOException {
         if (finished) {
             throw new IllegalStateException("ArchiveWriter already finished");
+        }
+        if (type == null || type.isBlank()) {
+            throw new IllegalArgumentException("Archive type is required");
+        }
+        JsonObject effective = business != null ? business : new JsonObject();
+        if (effective.has(ArchiveMetadata.BUSINESS_TYPE_KEY)) {
+            var existing = effective.get(ArchiveMetadata.BUSINESS_TYPE_KEY);
+            if (!existing.isJsonPrimitive() || !type.equals(existing.getAsString())) {
+                throw new IllegalArgumentException("Archive type mismatch: expected " + type
+                        + " but got " + existing);
+            }
+        } else {
+            effective.addProperty(ArchiveMetadata.BUSINESS_TYPE_KEY, type);
         }
         ArchiveMetadata meta = new ArchiveMetadata(
                 ArchiveMetadata.FORMAT_VERSION,
                 ArchiveMetadata.nowTime(),
                 declared,
-                business);
+                effective);
         byte[] metaBytes = GSON.toJson(meta.toJson()).getBytes(StandardCharsets.UTF_8);
 
         ZipEntry metaEntry = new ZipEntry(ArchiveMetadata.metadataEntryName(hex));
@@ -146,7 +164,7 @@ public final class ArchiveWriter implements AutoCloseable {
     }
 
     /**
-     * 关闭写入器；未 {@link #finish(JsonObject)} 时清理临时文件。
+     * 关闭写入器；未 {@link #finish(String, JsonObject)} 时清理临时文件。
      *
      * @throws IOException 如果关闭底层流失败
      */
