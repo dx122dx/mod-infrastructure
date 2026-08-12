@@ -56,7 +56,7 @@ public final class DebuggerModule implements IModule {
      *
      * <p>与宿主模组的 {@code mod_version} 解耦：改动本模块时手工递增本常量。</p>
      */
-    private static final String VERSION = "20260807.1";
+    private static final String VERSION = "20260812.1";
 
     /** 供 Java SPI 实例化；登记由 {@code ModuleRegistry.discover()} 统一触发。 */
     public DebuggerModule() {}
@@ -102,8 +102,9 @@ public final class DebuggerModule implements IModule {
                 new DebuggerConfig(),
                 DebuggerModule::openConfigGui);
 
-        // debugger:feature —— 调试特性开关（动态 Map，非静态字段），独立 GUI。
-        // 配置对象为占位实例：特性状态由 FeatureStateStore 动态持久化，反射 get/set 为 no-op。
+        // debugger:feature —— 调试特性开关（动态键配置，非静态字段），独立 GUI。
+        // 配置对象实现 IDynamicConfig，键 = 特性 id 字符串；/inf config get|set|reset
+        // debugger:feature/<id> 与路径/值补全均经 ConfigAccessor 派发到该接口生效。
         ConfigPath featurePath = ConfigPath.of(ID, "feature", "");
         ConfigDescriptor featureDesc = ConfigDescriptor.withGui(
                 featurePath,

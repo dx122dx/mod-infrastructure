@@ -47,6 +47,11 @@ import com.billy65536.infrastructure.security.core.internal.Origin;
  * {@link ConfigDescriptor#getConfig()} 现取活动实例做反射读写——
  * 配置类无需在编译期对框架可见，模块可位于任意 mod 内。</p>
  *
+ * <p><b>动态配置</b>：配置对象若实现 {@link IDynamicConfig}（如 debugger 的调试特性开关，
+ * 键由运行时注册决定、无法用静态字段表达），本访问器在各公开方法入口先于反射路径
+ * 派发到接口方法，使动态键与普通字段路径在命令层行为完全一致
+ * （读 / 写 / 重置 / 类型展示 / 补全），并同样受锁定门禁与审计约束。</p>
+ *
  * <p>索引构建规则：递归遍历对象图，仅纳入 public、非 static、非 transient、非 synthetic 的字段；
  * 基本类型 / 包装类 / String / 枚举视为叶子（停止递归），其余 POJO 继续向下展开。
  * 使用 {@link LinkedHashMap} 保证路径顺序与字段声明顺序一致（影响补全与列举）。</p>
@@ -138,19 +143,26 @@ public final class ConfigAccessor {
     public static Collection<String> listPaths(ConfigDescriptor descriptor) {
         Object config = descriptor == null ? null : descriptor.getConfig();
         if (config == null) return List.of();
+        if (config instanceof IDynamicConfig dyn) return dyn.listKeys();
         return indexOf(config.getClass()).keySet();
     }
 
     /** 路径是否存在。 */
     public static boolean hasPath(ConfigDescriptor descriptor, String path) {
         Object config = descriptor == null ? null : descriptor.getConfig();
-        return config != null && indexOf(config.getClass()).containsKey(path);
+        if (config == null) return false;
+        if (config instanceof IDynamicConfig dyn) return dyn.hasKey(path);
+        return indexOf(config.getClass()).containsKey(path);
     }
 
     /** 该路径字段类型简名，用于错误提示与 get 展示。路径不存在或 config 为 null 返回 null。 */
     public static String getTypeName(ConfigDescriptor descriptor, String path) {
         Object config = descriptor == null ? null : descriptor.getConfig();
         if (config == null) return null;
+        if (config instanceof IDynamicConfig dyn) {
+            Class<?> type = dyn.getType(path);
+            return type == null ? null : type.getSimpleName();
+        }
         Field[] chain = indexOf(config.getClass()).get(path);
         return chain == null ? null : chain[chain.length - 1].getType().getSimpleName();
     }
@@ -158,6 +170,7 @@ public final class ConfigAccessor {
     /** 读取配置实例中该路径的值。路径不存在或反射失败返回 null。 */
     public static Object getValue(ConfigDescriptor descriptor, String path) {
         Object config = descriptor == null ? null : descriptor.getConfig();
+        if (config instanceof IDynamicConfig dyn) return dyn.get(path);
         return read(config, path);
     }
 
@@ -165,6 +178,7 @@ public final class ConfigAccessor {
     public static Object getDefaultValue(ConfigDescriptor descriptor, String path) {
         Object config = descriptor == null ? null : descriptor.getConfig();
         if (config == null) return null;
+        if (config instanceof IDynamicConfig dyn) return dyn.getDefault(path);
         Object pristine = pristineOf(config.getClass());
         return read(pristine, path);
     }
@@ -196,6 +210,15 @@ public final class ConfigAccessor {
     public static void setValue(ConfigDescriptor descriptor, String path, String rawValue)
             throws ConfigLockedException, ConfigAccessException {
         Object config = requireConfig(descriptor);
+        if (config instanceof IDynamicConfig dyn) {
+            requireUnlocked(descriptor, path, AuditEntry.Channel.SET, rawValue);
+            Class<?> type = dyn.getType(path);
+            if (type == null) {
+                throw new ConfigAccessException("Unknown config path: " + path);
+            }
+            dyn.set(path, parseValue(type, rawValue, path));
+            return;
+        }
         Field[] chain = requireChain(config, path);
         requireUnlocked(descriptor, path, AuditEntry.Channel.SET, rawValue);
         Field leaf = chain[chain.length - 1];
@@ -211,6 +234,14 @@ public final class ConfigAccessor {
     public static void resetValue(ConfigDescriptor descriptor, String path)
             throws ConfigLockedException, ConfigAccessException {
         Object config = requireConfig(descriptor);
+        if (config instanceof IDynamicConfig dyn) {
+            requireUnlocked(descriptor, path, AuditEntry.Channel.RESET, null);
+            if (!dyn.hasKey(path)) {
+                throw new ConfigAccessException("Unknown config path: " + path);
+            }
+            dyn.reset(path);
+            return;
+        }
         Field[] chain = requireChain(config, path);
         requireUnlocked(descriptor, path, AuditEntry.Channel.RESET, null);
         Object pristine = pristineOf(config.getClass());
@@ -243,6 +274,24 @@ public final class ConfigAccessor {
     public static Object applyLockedValue(ConfigDescriptor descriptor, String path)
             throws ConfigAccessException {
         Object config = requireConfig(descriptor);
+        if (config instanceof IDynamicConfig dyn) {
+            String fullPath = fullPathOf(descriptor, path);
+            if (!ConfigLocker.isLocked(fullPath)) {
+                throw new ConfigAccessException(
+                        "Config '" + fullPath + "' is not locked, there is no forced value to enforce");
+            }
+            String forcedValue = ConfigLocker.getForcedValue(fullPath);
+            if (forcedValue == null) {
+                return null; // 仅锁定无强制值，不写入
+            }
+            Class<?> type = dyn.getType(path);
+            if (type == null) {
+                throw new ConfigAccessException("Unknown config path: " + path);
+            }
+            Object value = parseValue(type, forcedValue, path);
+            dyn.set(path, value);
+            return value;
+        }
         Field[] chain = requireChain(config, path);
         String fullPath = fullPathOf(descriptor, path);
         if (!ConfigLocker.isLocked(fullPath)) {
@@ -385,7 +434,10 @@ public final class ConfigAccessor {
         if (config == null) return List.of();
         String p = prefix == null ? "" : prefix.toLowerCase(Locale.ROOT);
         List<String> out = new ArrayList<>();
-        for (String path : indexOf(config.getClass()).keySet()) {
+        Collection<String> paths = (config instanceof IDynamicConfig dyn)
+                ? dyn.listKeys()
+                : indexOf(config.getClass()).keySet();
+        for (String path : paths) {
             if (path.toLowerCase(Locale.ROOT).startsWith(p)) out.add(path);
         }
         return out;
@@ -403,6 +455,7 @@ public final class ConfigAccessor {
     public static List<String> suggestValues(ConfigDescriptor descriptor, String path) {
         Object config = descriptor == null ? null : descriptor.getConfig();
         if (config == null) return List.of();
+        if (config instanceof IDynamicConfig dyn) return dyn.suggestValues(path);
         Field[] chain = indexOf(config.getClass()).get(path);
         if (chain == null) return List.of();
         Class<?> type = chain[chain.length - 1].getType();
