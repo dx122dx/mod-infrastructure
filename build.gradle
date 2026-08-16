@@ -41,6 +41,10 @@ repositories {
         name = 'Shedaniel'
         url = 'https://maven.shedaniel.me/'
     }
+    maven {
+        name = 'Gegy'
+        url = 'https://maven.gegy.dev/releases/'
+    }
     mavenCentral()
 }
 
@@ -61,6 +65,18 @@ dependencies {
 
 	// ModMenu 为可选依赖：仅编译期需要 API，运行时缺失不影响功能
 	modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+
+	// SpruceUI — 统一 GUI 布局框架（ScreenContainer/TableLayout 等）。
+	// modApi 使其坐标进入本仓 POM，下游模组（qab 等）编译期可经 infrastructure 传递解析；
+	// include JiJ 打进 infrastructure 产物，运行时随 infrastructure 一并加载，下游无需单独安装。
+	// SpruceUI 的 POM 非 optional 依赖 fabric-loader 与 fabric-api 模块，必须排除，避免污染产物。
+	modApi("dev.lambdaurora:spruceui:${project.spruceui_version}") {
+		exclude(group: "net.fabricmc.fabric-api")
+	}
+	include("dev.lambdaurora:spruceui:${project.spruceui_version}") {
+		exclude(group: "net.fabricmc.fabric-api")
+		exclude(group: "net.fabricmc")
+	}
 
 	// Test dependencies — JUnit 提供单元测试能力（ConfigLocker 等纯逻辑测试无需 Minecraft 引导）
 	testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
