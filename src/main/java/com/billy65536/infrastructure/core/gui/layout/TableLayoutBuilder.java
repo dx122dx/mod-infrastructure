@@ -104,6 +104,12 @@ public class TableLayoutBuilder {
 			return this;
 		}
 
+		/** 通用单元格入口（注入任意 {@link IContentCell}，如带色文本/多行/动态文本）。 */
+		public RowBuilder cell(IContentCell cell) {
+			cells.add(cell);
+			return this;
+		}
+
 		/** 文本单元格。 */
 		public RowBuilder text(String string) {
 			cells.add(TextCell.of(string));
@@ -113,6 +119,12 @@ public class TableLayoutBuilder {
 		/** 文本单元格。 */
 		public RowBuilder text(Text text) {
 			cells.add(TextCell.of(text));
+			return this;
+		}
+
+		/** 带色文本单元格。 */
+		public RowBuilder text(Text text, int color) {
+			cells.add(TextCell.of(text).withColor(color));
 			return this;
 		}
 

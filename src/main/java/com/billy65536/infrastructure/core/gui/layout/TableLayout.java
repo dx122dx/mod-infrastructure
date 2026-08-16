@@ -443,6 +443,26 @@ public class TableLayout extends AbstractLayout {
 						alignX(columnSpecs[c].getAlign(), colLeft + COL_PADDING / 2, colW - COL_PADDING, tr.getWidth(tc.text())),
 						y, tc.color());
 				if (colHovered) hoveredCol = c;
+			} else if (cell instanceof MultiLineTextCell mlc) {
+				List<String> lines = mlc.displayLines();
+				int totalH = mlc.totalHeight();
+				int startY = rowY + (rowHeight - totalH) / 2;
+				int lineNo = 0;
+				for (String line : lines) {
+					ctx.getMatrices().push();
+					ctx.getMatrices().translate(colLeft + COL_PADDING / 2, startY + lineNo * mlc.lineHeight(), 0);
+					ctx.getMatrices().scale(mlc.scale(), mlc.scale(), 1);
+					ctx.drawTextWithShadow(tr, Text.literal(line), 0, 0, mlc.color());
+					ctx.getMatrices().pop();
+					lineNo++;
+				}
+				if (colHovered) hoveredCol = c;
+			} else if (cell instanceof DynamicTextCell dtc) {
+				String cur = dtc.current();
+				ctx.drawTextWithShadow(tr, Text.literal(cur),
+						alignX(dtc.align(), colLeft + COL_PADDING / 2, colW - COL_PADDING, tr.getWidth(cur)),
+						y, dtc.color());
+				if (colHovered) hoveredCol = c;
 			}
 		}
 		int bx = contentLeft + columnX[n - 1] + COL_PADDING / 2;
@@ -467,6 +487,11 @@ public class TableLayout extends AbstractLayout {
 		if (cell instanceof TextCell tc) return tc.text().getString();
 		if (cell instanceof PositionCell pc) return pc.display().getString();
 		if (cell instanceof ItemCell ic) return ic.stack().getName().getString();
+		if (cell instanceof MultiLineTextCell mlc) {
+			List<String> lines = mlc.displayLines();
+			return lines.isEmpty() ? "" : lines.get(0);
+		}
+		if (cell instanceof DynamicTextCell dtc) return dtc.current();
 		return "";
 	}
 
