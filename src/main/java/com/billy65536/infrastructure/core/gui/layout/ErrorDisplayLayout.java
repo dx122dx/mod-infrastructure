@@ -184,24 +184,24 @@ public class ErrorDisplayLayout extends AbstractLayout {
 		for (int i = firstRow; i < lastRow; i++) {
 			ErrorRow row = rows.get(i);
 			if (row.text.getString().isEmpty()) continue;
-			int y = getY() + i * ROW_HEIGHT - scrollOffset;
-			ctx.drawTextWithShadow(textRenderer, row.text, getX() + LEFT_PADDING, y, row.color);
+			int y = i * ROW_HEIGHT - scrollOffset;
+			ctx.drawTextWithShadow(textRenderer, row.text, LEFT_PADDING, y, row.color);
 		}
-		// 滚动条
+		// 滚动条（局部坐标）
 		if (rows.size() * ROW_HEIGHT > height) {
-			int sx = getX() + width - 6;
+			int sx = width - 6;
 			int thumbH = Math.max(20, height * height / (rows.size() * ROW_HEIGHT));
 			int maxScroll = getMaxScroll();
-			int thumbY = maxScroll > 0 ? getY() + (height - thumbH) * scrollOffset / maxScroll : getY();
-			ctx.fill(sx, getY(), getX() + width, getY() + height, 0x66000000);
-			ctx.fill(sx, thumbY, getX() + width, thumbY + thumbH, 0x99AAAAAA);
+			int thumbY = maxScroll > 0 ? (height - thumbH) * scrollOffset / maxScroll : 0;
+			ctx.fill(sx, 0, width, height, 0x66000000);
+			ctx.fill(sx, thumbY, width, thumbY + thumbH, 0x99AAAAAA);
 		}
 	}
 
 	@Override
 	protected boolean onMouseScrolled(double mouseX, double mouseY, double amount) {
-		if (mouseX < getX() || mouseX > getX() + width
-				|| mouseY < getY() || mouseY > getY() + height) {
+		if (mouseX < 0 || mouseX > width
+				|| mouseY < 0 || mouseY > height) {
 			return false;
 		}
 		setScrollOffset(scrollOffset - (int) (amount * ROW_HEIGHT * 2));

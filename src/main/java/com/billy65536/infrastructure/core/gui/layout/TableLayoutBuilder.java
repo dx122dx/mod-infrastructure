@@ -28,6 +28,9 @@ public class TableLayoutBuilder {
 	private RowBuilder current;
 	private int rowSeparatorColor;
 	private int rowSeparatorHeight;
+	private int dragHandleColumn = -1;
+	private TableLayout.RowMoveCallback rowMoveCallback;
+	private TableLayout.RowDeleteCallback rowDeleteCallback;
 
 	public TableLayoutBuilder(TextRenderer tr, String[] headers, TableLayout.ColumnSpec[] columnSpecs) {
 		this(tr, headers, columnSpecs, 20);
@@ -44,6 +47,14 @@ public class TableLayoutBuilder {
 	public TableLayoutBuilder rowSeparator(int color, int height) {
 		this.rowSeparatorColor = color;
 		this.rowSeparatorHeight = height;
+		return this;
+	}
+
+	/** 启用拖拽排序：指定手柄列索引，并注入移动/删除回调。 */
+	public TableLayoutBuilder dragHandle(int columnIndex, TableLayout.RowMoveCallback onMove, TableLayout.RowDeleteCallback onDelete) {
+		this.dragHandleColumn = columnIndex;
+		this.rowMoveCallback = onMove;
+		this.rowDeleteCallback = onDelete;
 		return this;
 	}
 
@@ -67,6 +78,9 @@ public class TableLayoutBuilder {
 		if (rowSeparatorColor != 0) {
 			layout.setRowSeparator(rowSeparatorColor, rowSeparatorHeight);
 		}
+		if (dragHandleColumn >= 0) {
+			layout.setDragHandle(dragHandleColumn, rowMoveCallback, rowDeleteCallback);
+		}
 		return layout;
 	}
 
@@ -82,10 +96,6 @@ public class TableLayoutBuilder {
 					widths[c] = Math.max(widths[c], cell.cellWidth(tr));
 				}
 			}
-			if (!row.buttons.isEmpty() && widths.length > 0) {
-				widths[widths.length - 1] = Math.max(widths[widths.length - 1],
-						row.buttons.size() * 18 + (row.buttons.size() - 1) * 2 + 8);
-			}
 		}
 		return widths;
 	}
@@ -93,7 +103,6 @@ public class TableLayoutBuilder {
 	/** 行构建器：逐列填充，{@code done()} 校验列数并提交。 */
 	public final class RowBuilder {
 		private final List<IContentCell> cells = new ArrayList<>();
-		private final List<TableLayout.RowButton> buttons = new ArrayList<>();
 		private TableLayout.EditableCell editable;
 		private int editableCol = -1;
 		private boolean committed;
@@ -146,18 +155,6 @@ public class TableLayoutBuilder {
 			return this;
 		}
 
-		/** 行按钮（渲染于操作列）。 */
-		public RowBuilder button(Text label, Runnable action) {
-			buttons.add(TableLayout.RowButton.of(label, action));
-			return this;
-		}
-
-		/** 行按钮（自定义悬停颜色）。 */
-		public RowBuilder button(Text label, Runnable action, int hoverColor) {
-			buttons.add(new TableLayout.RowButton(label, action, hoverColor));
-			return this;
-		}
-
 		/** 将最近一次填充的列标记为可编辑（点击进入编辑，提交时回调）。 */
 		public RowBuilder editable(String value, Consumer<String> commit) {
 			this.editable = new TableLayout.EditableCell(value, commit);
@@ -185,7 +182,6 @@ public class TableLayoutBuilder {
 						"row cell count " + cells.size() + " != header count " + headers.length);
 			}
 			TableLayout.Row row = new TableLayout.Row(new ArrayList<>(cells));
-			row.buttons.addAll(buttons);
 			if (editable != null) {
 				row.editable = editable;
 				row.editableCol = editableCol;

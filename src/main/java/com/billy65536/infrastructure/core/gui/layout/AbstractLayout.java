@@ -2,6 +2,7 @@ package com.billy65536.infrastructure.core.gui.layout;
 
 import net.minecraft.client.gui.DrawContext;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector4f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,13 +13,24 @@ import java.util.List;
 /**
  * 布局树基类：子节点管理 + 坐标换算 + 递归渲染与事件分发。
  *
- * <p>容器类布局（PanelLayout / TableLayout 等）继承本类获得统一的子树行为：</p>
+ * <p>容器类布局（PanelLayout / TableLayout 等）继承本类获得统一的子树行为。</p>
+ *
+ * <h2>坐标约定（相对父组件坐标系）</h2>
  * <ul>
- *   <li>子节点以绝对坐标存储（相对布局树根 ScreenContainer），事件坐标直接透传无需换算；</li>
- *   <li>渲染顺序：先渲染自身，再按序渲染子节点；</li>
- *   <li>事件分发顺序：先命中子节点（后加入者优先，模拟 Z 序），未被消费再由自身处理；</li>
- *   <li>init/layout/tick 沿子树递归。</li>
+ *   <li>{@link #setBounds(int, int, int, int)} 的 x/y 为本节点相对父组件的偏移，
+ *       渲染与事件一律在「局部坐标系」（本节点左上角为原点）中进行；</li>
+ *   <li>渲染：父节点 {@code push → translate(this.x, this.y)} 后，本节点在局部坐标系
+ *       绘制自身与子节点（子节点递归同样换算）；</li>
+ *   <li>事件：父节点把 {@code (mouseX - this.x, mouseY - this.y)} 换算后的局部坐标
+ *       传给本节点与子节点；</li>
+ *   <li>屏幕级定位（scissor / tooltip）使用渲染时在 translate 前维护的
+ *       {@link #absX}/{@link #absY}（屏幕绝对坐标），业务层与组件内部禁止
+ *       自行拼接绝对坐标。</li>
  * </ul>
+ *
+ * <p>渲染顺序：先渲染自身，再按序渲染子节点；
+ * 事件分发顺序：先命中子节点（后加入者优先，模拟 Z 序），未被消费再由自身处理；
+ * init/layout/tick 沿子树递归。</p>
  */
 public abstract class AbstractLayout implements ILayout {
 
@@ -26,6 +38,10 @@ public abstract class AbstractLayout implements ILayout {
 	protected int y;
 	protected int width;
 	protected int height;
+
+	/** 本节点左上角的屏幕绝对坐标（render 在 translate 前维护；scissor 等屏幕级定位用）。 */
+	protected int absX;
+	protected int absY;
 
 	/** 子节点列表；null 表示该节点不允许/尚未持有子节点。 */
 	@Nullable
@@ -105,7 +121,7 @@ public abstract class AbstractLayout implements ILayout {
 	}
 
 	/**
-	 * 默认布局实现：对子节点不自动排布（保持其 setBounds 设定的绝对坐标）。
+	 * 默认布局实现：对子节点不自动排布（保持其 setBounds 设定的相对父坐标）。
 	 * 需要自动排布的容器覆盖 {@link #layout()} 自行实现。
 	 */
 	@Override
@@ -126,26 +142,37 @@ public abstract class AbstractLayout implements ILayout {
 	}
 
 	/**
-	 * 递归渲染：先自身后子树。
+	 * 递归渲染：先维护屏幕坐标，再 push/translate 到局部坐标系，先自身后子树。
 	 */
 	@Override
 	public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
 		try {
-			this.renderSelf(ctx, mouseX, mouseY, delta);
+			// translate 前：把本节点左上角变换为屏幕坐标（供 scissor 等屏幕级定位）
+			Vector4f screenPos = ctx.getMatrices().peek().getPositionMatrix()
+					.transform(new Vector4f(this.x, this.y, 0.0f, 1.0f));
+			this.absX = Math.round(screenPos.x);
+			this.absY = Math.round(screenPos.y);
+
+			ctx.getMatrices().push();
+			ctx.getMatrices().translate(this.x, this.y, 0);
+			int localMouseX = mouseX - this.x;
+			int localMouseY = mouseY - this.y;
+			this.renderSelf(ctx, localMouseX, localMouseY, delta);
 			if (this.children != null) {
 				for (ILayout child : this.children) {
 					if (child.isVisible()) {
-						child.render(ctx, mouseX, mouseY, delta);
+						child.render(ctx, localMouseX, localMouseY, delta);
 					}
 				}
 			}
+			ctx.getMatrices().pop();
 		} catch (Throwable t) {
 			this.reportError(t);
 		}
 	}
 
 	/**
-	 * 子类覆盖：渲染自身内容（不含子节点）。
+	 * 子类覆盖：渲染自身内容（不含子节点）。坐标均为本节点局部坐标系（左上角为原点）。
 	 */
 	protected abstract void renderSelf(DrawContext ctx, int mouseX, int mouseY, float delta);
 
@@ -172,8 +199,9 @@ public abstract class AbstractLayout implements ILayout {
 
 	@Override
 	public boolean isMouseOver(double mouseX, double mouseY) {
-		return mouseX >= this.x && mouseX <= this.x + this.width
-			&& mouseY >= this.y && mouseY <= this.y + this.height;
+		// 局部坐标判断（父节点已换算传入）
+		return mouseX >= 0 && mouseX <= this.width
+			&& mouseY >= 0 && mouseY <= this.height;
 	}
 
 	// ---- 事件分发 ----
@@ -185,16 +213,18 @@ public abstract class AbstractLayout implements ILayout {
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
 		try {
+			double localX = mouseX - this.x;
+			double localY = mouseY - this.y;
 			if (this.children != null) {
 				for (int i = this.children.size() - 1; i >= 0; i--) {
 					ILayout child = this.children.get(i);
-					if (child.isVisible() && child.isMouseOver(mouseX, mouseY)
-						&& child.mouseClicked(mouseX, mouseY, button)) {
+					if (child.isVisible() && child.isMouseOver(localX, localY)
+						&& child.mouseClicked(localX, localY, button)) {
 						return true;
 					}
 				}
 			}
-			return this.onMouseClicked(mouseX, mouseY, button);
+			return this.onMouseClicked(localX, localY, button);
 		} catch (Throwable t) {
 			this.reportError(t);
 			return true;
@@ -202,7 +232,7 @@ public abstract class AbstractLayout implements ILayout {
 	}
 
 	/**
-	 * 子类覆盖：自身鼠标点击处理。
+	 * 子类覆盖：自身鼠标点击处理。坐标为局部坐标。
 	 */
 	protected boolean onMouseClicked(double mouseX, double mouseY, int button) {
 		return false;
@@ -211,16 +241,18 @@ public abstract class AbstractLayout implements ILayout {
 	@Override
 	public boolean mouseReleased(double mouseX, double mouseY, int button) {
 		try {
+			double localX = mouseX - this.x;
+			double localY = mouseY - this.y;
 			if (this.children != null) {
 				for (int i = this.children.size() - 1; i >= 0; i--) {
 					ILayout child = this.children.get(i);
-					if (child.isVisible() && child.isMouseOver(mouseX, mouseY)
-						&& child.mouseReleased(mouseX, mouseY, button)) {
+					if (child.isVisible() && child.isMouseOver(localX, localY)
+						&& child.mouseReleased(localX, localY, button)) {
 						return true;
 					}
 				}
 			}
-			return this.onMouseReleased(mouseX, mouseY, button);
+			return this.onMouseReleased(localX, localY, button);
 		} catch (Throwable t) {
 			this.reportError(t);
 			return true;
@@ -234,16 +266,18 @@ public abstract class AbstractLayout implements ILayout {
 	@Override
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
 		try {
+			double localX = mouseX - this.x;
+			double localY = mouseY - this.y;
 			if (this.children != null) {
 				for (int i = this.children.size() - 1; i >= 0; i--) {
 					ILayout child = this.children.get(i);
-					if (child.isVisible() && child.isMouseOver(mouseX, mouseY)
-						&& child.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)) {
+					if (child.isVisible() && child.isMouseOver(localX, localY)
+						&& child.mouseDragged(localX, localY, button, deltaX, deltaY)) {
 						return true;
 					}
 				}
 			}
-			return this.onMouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+			return this.onMouseDragged(localX, localY, button, deltaX, deltaY);
 		} catch (Throwable t) {
 			this.reportError(t);
 			return true;
@@ -257,16 +291,18 @@ public abstract class AbstractLayout implements ILayout {
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
 		try {
+			double localX = mouseX - this.x;
+			double localY = mouseY - this.y;
 			if (this.children != null) {
 				for (int i = this.children.size() - 1; i >= 0; i--) {
 					ILayout child = this.children.get(i);
-					if (child.isVisible() && child.isMouseOver(mouseX, mouseY)
-						&& child.mouseScrolled(mouseX, mouseY, amount)) {
+					if (child.isVisible() && child.isMouseOver(localX, localY)
+						&& child.mouseScrolled(localX, localY, amount)) {
 						return true;
 					}
 				}
 			}
-			return this.onMouseScrolled(mouseX, mouseY, amount);
+			return this.onMouseScrolled(localX, localY, amount);
 		} catch (Throwable t) {
 			this.reportError(t);
 			return true;

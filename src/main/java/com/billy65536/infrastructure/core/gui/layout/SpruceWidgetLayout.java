@@ -10,8 +10,15 @@ import org.slf4j.LoggerFactory;
  * 将 SpruceUI 控件（SpruceButtonWidget / SpruceTextFieldWidget 等）包装为 ILayout 节点，
  * 使其能加入布局树并随 ScreenContainer 统一渲染与分发事件。
  *
- * <p>控件位置经其内部 {@link SpruceWidget#getPosition()} 的 relativeX/relativeY 移动；
- * 宽高为控件构造时的固有值，不可由布局树改变（SpruceWidget 接口未暴露 setWidth/setHeight）。</p>
+ * <h2>坐标约定（相对父组件坐标系）</h2>
+ * <ul>
+ *   <li>{@link #setBounds(int, int, int, int)} 的 x/y 经 {@code setRelativeX/Y} 写入
+ *       Spruce 的 {@link SpruceWidget#getPosition()}（anchor 为 origin），
+ *       {@link #getX()}/{@link #getY()} 返回 Position 链求和坐标，即相对父组件的局部坐标；</li>
+ *   <li>父布局渲染 {@code translate} 后，Spruce 控件用 getX() 绘制、用同一 getX() 命中，
+ *       与传入的局部鼠标坐标一致，无双重偏移；</li>
+ *   <li>宽高为控件构造时的固有值，不可由布局树改变（SpruceWidget 接口未暴露 setWidth/setHeight）。</li>
+ * </ul>
  */
 public class SpruceWidgetLayout implements ILayout {
 

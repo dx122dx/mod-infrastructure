@@ -2,7 +2,6 @@ package com.billy65536.infrastructure.core.gui.layout;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -11,6 +10,7 @@ import org.lwjgl.glfw.GLFW;
 
 import dev.lambdaurora.spruceui.Position;
 import dev.lambdaurora.spruceui.widget.text.SpruceTextFieldWidget;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -31,50 +31,47 @@ public class TableLayout extends AbstractLayout {
 	private static final int COL_PADDING = 8;
 	private static final int HEADER_HEIGHT = 16;
 	private static final int SCROLLBAR_WIDTH = 6;
-	private static final int BTN_WIDTH = 18;
-	private static final int BTN_GAP = 2;
-	private static final int BTN_HOVER_COLOR = 0xFFFFFFAA;
 	private static final int HEADER_COLOR = 0xFFFFAA00;
 	private static final int ROW_HOVER_BG = 0x18FFFFFF;
+	/** 拖拽手柄字符。 */
+	private static final String DRAG_HANDLE_TEXT = "\u280F";
+	/** 拖拽中：距视口上/下边缘该距离内触发边缘自动滚动。 */
+	private static final int DRAG_EDGE_SCROLL_THRESHOLD = 20;
+	/** 拖拽行高亮背景。 */
+	private static final int DRAG_ROW_BG = 0x30FFFFFF;
+	/** 拖拽插入指示线颜色。 */
+	private static final int DRAG_INSERT_LINE = 0xFFFFAA00;
+	/** 拖出删除提示背景。 */
+	private static final int DRAG_DELETE_BG = 0x50FF3333;
 
 	// ===== 嵌套类型 =====
 
-	/** 列规格：固定宽或权重宽 + 对齐/弹性/收缩优先级/下限宽度。 */
+	/** 列规格：固定宽或权重宽 + 对齐/弹性/下限宽度。 */
 	public static final class ColumnSpec {
 		public enum Align { LEFT, CENTER, RIGHT }
 		private final boolean fixed;
 		private final int size;
 		private final Align align;
 		private final boolean elastic;
-		private final int shrinkPriority;
 		private final int floorWidth;
 
-		private ColumnSpec(boolean fixed, int size, Align align, boolean elastic, int shrinkPriority, int floorWidth) {
+		private ColumnSpec(boolean fixed, int size, Align align, boolean elastic, int floorWidth) {
 			this.fixed = fixed; this.size = size; this.align = align;
-			this.elastic = elastic; this.shrinkPriority = shrinkPriority; this.floorWidth = floorWidth;
+			this.elastic = elastic; this.floorWidth = floorWidth;
 		}
 
-		public static ColumnSpec ofFixed(int width) { return new ColumnSpec(true, width, Align.LEFT, false, 0, 0); }
-		public static ColumnSpec ofFixed(int width, Align align) { return new ColumnSpec(true, width, align, false, 0, 0); }
-		public static ColumnSpec ofWeight(int weight) { return new ColumnSpec(false, weight, Align.LEFT, false, 0, 0); }
-		public static ColumnSpec ofWeight(int weight, Align align) { return new ColumnSpec(false, weight, align, false, 0, 0); }
-		public ColumnSpec elastic() { return new ColumnSpec(fixed, size, align, true, shrinkPriority, floorWidth); }
-		public ColumnSpec shrinkPriority(int priority) { return new ColumnSpec(fixed, size, align, elastic, priority, floorWidth); }
-		public ColumnSpec floorWidth(int width) { return new ColumnSpec(fixed, size, align, elastic, shrinkPriority, width); }
+		public static ColumnSpec ofFixed(int width) { return new ColumnSpec(true, width, Align.LEFT, false, 0); }
+		public static ColumnSpec ofFixed(int width, Align align) { return new ColumnSpec(true, width, align, false, 0); }
+		public static ColumnSpec ofWeight(int weight) { return new ColumnSpec(false, weight, Align.LEFT, false, 0); }
+		public static ColumnSpec ofWeight(int weight, Align align) { return new ColumnSpec(false, weight, align, false, 0); }
+		public ColumnSpec elastic() { return new ColumnSpec(fixed, size, align, true, floorWidth); }
+		public ColumnSpec floorWidth(int width) { return new ColumnSpec(fixed, size, align, elastic, width); }
 
 		boolean isFixed() { return fixed; }
 		int getSize() { return size; }
 		Align getAlign() { return align; }
 		boolean isElastic() { return elastic; }
-		int getShrinkPriority() { return shrinkPriority; }
 		int getFloorWidth() { return floorWidth; }
-	}
-
-	/** 行内按钮：渲染于操作列，点击触发回调。 */
-	public record RowButton(Text label, Runnable action, int hoverColor) {
-		public static RowButton of(Text label, Runnable action) {
-			return new RowButton(label, action, BTN_HOVER_COLOR);
-		}
 	}
 
 	/** 可编辑单元格：携带当前值与提交回调。 */
@@ -93,18 +90,28 @@ public class TableLayout extends AbstractLayout {
 		}
 	}
 
-	/** 命中结果：按钮 / 可编辑单元格 / 所在列。 */
-	public record CellHit(@Nullable RowButton button, @Nullable EditableCell editable, int col) {}
+	/** 拖拽排序回调：行移动。from 为原索引，to 为移动后目标索引。 */
+	@FunctionalInterface
+	public interface RowMoveCallback {
+		void onRowMove(int from, int to);
+	}
+
+	/** 拖拽排序回调：行删除（拖出列表释放触发）。 */
+	@FunctionalInterface
+	public interface RowDeleteCallback {
+		void onRowDelete(int index);
+	}
+
+	/** 命中结果：可编辑单元格 / 所在列。 */
+	public record CellHit(@Nullable EditableCell editable, int col) {}
 
 	/** 行数据结构（轻量，仅构建后读取，同一包内构建器可写）。 */
 	static final class Row {
 		final List<IContentCell> cells;
-		final List<RowButton> buttons;
 		@Nullable EditableCell editable;
 		int editableCol = -1;
 		Row(List<IContentCell> cells) {
 			this.cells = cells;
-			this.buttons = new ArrayList<>();
 		}
 	}
 
@@ -119,6 +126,8 @@ public class TableLayout extends AbstractLayout {
 
 	private int scrollOffset;
 	private int hScrollOffset;
+	/** 横向滚动条 thumb 拖拽中。 */
+	private boolean draggingHScroll;
 	private int[] columnX;
 	/** 构建期内容测量宽（max(表头, 单元格)），作为 reflow 的自适应基准。 */
 	private final int[] naturalWidth;
@@ -133,6 +142,15 @@ public class TableLayout extends AbstractLayout {
 	private int editCol = -1;
 	@Nullable private SpruceTextFieldWidget editor;
 	@Nullable private SpruceWidgetLayout editorLayout;
+
+	// 拖拽排序状态（dragHandleColumn < 0 表示未启用）
+	private int dragHandleColumn = -1;
+	@Nullable private RowMoveCallback rowMoveCallback;
+	@Nullable private RowDeleteCallback rowDeleteCallback;
+	private boolean draggingRow;
+	private int dragStartRow = -1;
+	private int dragHoverRow = -1;
+	private boolean dragOutOfList;
 
 	// ===== 构造 =====
 	TableLayout(TextRenderer tr, String[] headers, ColumnSpec[] columnSpecs, int rowHeight,
@@ -152,6 +170,13 @@ public class TableLayout extends AbstractLayout {
 	void setRowSeparator(int color, int height) {
 		this.rowSeparatorColor = color;
 		this.rowSeparatorHeight = height;
+	}
+
+	/** 启用拖拽排序：指定手柄列索引，并注入移动/删除回调。 */
+	void setDragHandle(int columnIndex, RowMoveCallback onMove, RowDeleteCallback onDelete) {
+		this.dragHandleColumn = columnIndex;
+		this.rowMoveCallback = onMove;
+		this.rowDeleteCallback = onDelete;
 	}
 
 	// ===== 数据 API =====
@@ -203,7 +228,8 @@ public class TableLayout extends AbstractLayout {
 	public int getRowHeight() { return rowHeight; }
 	public int getContentWidth() { return contentWidth; }
 
-	/** 按可用宽度重算列宽与列起点：固定列取设定宽，其余列以内容测量宽为基准（自适应），富余给弹性列，超宽按收缩优先级收缩。 */
+	/** 按可用宽度重算列宽与列起点：固定列取设定宽，其余列以内容测量宽为基准（自然宽度模式），
+	 *  富余空间按权重分给弹性列；不足时不再压缩（超出部分由横向滚动条接管，见 {@link #hasHScroll()}）。 */
 	public void reflow(int availWidth) {
 		int n = columnSpecs.length;
 		int used = 0;
@@ -217,33 +243,33 @@ public class TableLayout extends AbstractLayout {
 		}
 		int overflow = availWidth - used - COL_PADDING * n;
 		if (overflow > 0) {
-			int elasticCount = 0;
+			// 富余空间按权重分给弹性列
+			int totalWeight = 0;
 			for (ColumnSpec spec : columnSpecs) {
-				if (!spec.isFixed() && spec.isElastic()) elasticCount++;
+				if (!spec.isFixed() && spec.isElastic()) totalWeight += Math.max(1, spec.getSize());
 			}
-			if (elasticCount > 0) {
-				int per = overflow / elasticCount;
-				int rem = overflow - per * elasticCount;
+			if (totalWeight > 0) {
+				int distributed = 0;
 				for (int i = 0; i < n; i++) {
-					if (!columnSpecs[i].isFixed() && columnSpecs[i].isElastic()) {
-						columnWidth[i] += per + (rem-- > 0 ? 1 : 0);
+					ColumnSpec spec = columnSpecs[i];
+					if (spec.isFixed() || !spec.isElastic()) continue;
+					int add = (int) ((long) overflow * Math.max(1, spec.getSize()) / totalWeight);
+					columnWidth[i] += add;
+					distributed += add;
+				}
+				// 整除误差归入第一个弹性列
+				int rem = overflow - distributed;
+				if (rem > 0) {
+					for (int i = 0; i < n; i++) {
+						if (!columnSpecs[i].isFixed() && columnSpecs[i].isElastic()) {
+							columnWidth[i] += rem;
+							break;
+						}
 					}
 				}
 			}
 		}
-		int shrink = used + COL_PADDING * n - availWidth;
-		if (shrink > 0) {
-			Integer[] order = new Integer[n];
-			for (int i = 0; i < n; i++) order[i] = i;
-			Arrays.sort(order, Comparator.comparingInt((Integer idx) -> columnSpecs[idx].getShrinkPriority()).reversed());
-			for (int idx : order) {
-				if (shrink <= 0) break;
-				if (columnSpecs[idx].isFixed()) continue;
-				int reduce = Math.min(columnWidth[idx] - columnSpecs[idx].getFloorWidth(), shrink);
-				columnWidth[idx] -= reduce;
-				shrink -= reduce;
-			}
-		}
+		// 不做“不足压缩”：内容超宽时保持自然宽度，由横向滚动条接管
 		int x = 0;
 		for (int i = 0; i < n; i++) {
 			columnX[i] = x;
@@ -256,8 +282,8 @@ public class TableLayout extends AbstractLayout {
 	public int getColumnX(int col, int contentLeft) { return contentLeft + getColumnX(col); }
 	public int getColumnWidth(int col) { return col >= 0 && col < columnWidth.length ? columnWidth[col] : 0; }
 
-	/** 行的绝对 Y（含滚动偏移）。 */
-	public int rowYAt(int row) { return getY() + HEADER_HEIGHT + row * rowHeight - scrollOffset; }
+	/** 行的局部 Y（含滚动偏移）。 */
+	public int rowYAt(int row) { return HEADER_HEIGHT + row * rowHeight - scrollOffset; }
 
 	/** 可视视口高度（横向滚动条可见时扣除其高度）。 */
 	private int viewportHeight() {
@@ -288,12 +314,21 @@ public class TableLayout extends AbstractLayout {
 		return editRow >= 0 && editRow < rows.size() ? rows.get(editRow).editable : null;
 	}
 
-	/** 在指定行/列启动编辑（该列需配置可编辑单元格）。 */
+	/** 在指定行/列启动编辑（该列需配置可编辑单元格）。
+	 *  <p>已处于编辑态时：目标为同一格则保持现状；目标为其他可编辑格则静默写回旧格值
+	 *  （不触发 commit 回调、不重建表格），直接打开新格编辑框，实现一次点击切换编辑目标。</p> */
 	public void startEdit(int row, int col) {
 		if (row < 0 || row >= rows.size() || col < 0 || col >= headers.length) return;
 		Row r = rows.get(row);
 		if (r.editable == null || r.editableCol != col) return;
-		if (editor != null) commitEdit();
+		if (editor != null) {
+			// 同一格：保持编辑态
+			if (editRow == row && editCol == col) return;
+			// 切换目标：静默写回旧格值（不触发 commit 回调，避免业务重建打断编辑）
+			Row old = rows.get(editRow);
+			if (old.editable != null) old.editable.setValue(editor.getText());
+			clearEditor();
+		}
 
 		editRow = row;
 		editCol = col;
@@ -329,7 +364,7 @@ public class TableLayout extends AbstractLayout {
 	private void placeEditor() {
 		if (editorLayout == null) return;
 		editorLayout.setBounds(
-				getX() + columnX[editCol] - hScrollOffset + 2,
+				columnX[editCol] - hScrollOffset + 2,
 				rowYAt(editRow) + 2,
 				Math.max(20, columnWidth[editCol] - 4),
 				Math.max(10, rowHeight - 6));
@@ -341,27 +376,28 @@ public class TableLayout extends AbstractLayout {
 		if (row < 0 || row >= rows.size()) return null;
 		if (mouseY < rowY || mouseY >= rowY + rowHeight) return null;
 		Row r = rows.get(row);
-		int n = headers.length;
 		int contentLeftX = contentLeft - hScrollOffset;
-		if (!r.buttons.isEmpty() && n > 0) {
-			int bx = contentLeftX + columnX[n - 1] + COL_PADDING / 2;
-			for (RowButton button : r.buttons) {
-				if (mouseX >= bx && mouseX < bx + BTN_WIDTH) return new CellHit(button, null, n - 1);
-				bx += BTN_WIDTH + BTN_GAP;
-			}
-		}
 		if (r.editable != null && r.editableCol >= 0) {
 			int ex = contentLeftX + columnX[r.editableCol];
 			if (mouseX >= ex && mouseX < ex + columnWidth[r.editableCol]) {
-				return new CellHit(null, r.editable, r.editableCol);
+				return new CellHit(r.editable, r.editableCol);
 			}
 		}
 		return null;
 	}
 
+	/** 命中拖拽手柄列区域（局部坐标）。 */
+	private boolean hitDragHandle(double mouseX, double mouseY) {
+		if (dragHandleColumn < 0) return false;
+		int contentLeftX = -hScrollOffset;
+		int hx = contentLeftX + columnX[dragHandleColumn];
+		int hw = columnWidth[dragHandleColumn];
+		return mouseX >= hx && mouseX < hx + hw;
+	}
+
 	/** 鼠标 Y → 行索引（-1 表示表头或表格外）。 */
 	public int getRowAtY(double mouseY) {
-		double rel = mouseY - getY() - HEADER_HEIGHT + scrollOffset;
+		double rel = mouseY - HEADER_HEIGHT + scrollOffset;
 		if (rel < 0) return -1;
 		int row = (int) (rel / rowHeight);
 		return row < rows.size() ? row : -1;
@@ -372,7 +408,7 @@ public class TableLayout extends AbstractLayout {
 	protected void renderSelf(DrawContext ctx, int mouseX, int mouseY, float delta) {
 		if (editor != null) {
 			int rowTop = rowYAt(editRow);
-			if (rowTop + rowHeight < getY() + HEADER_HEIGHT || rowTop > getY() + height) {
+			if (rowTop + rowHeight < HEADER_HEIGHT || rowTop > height) {
 				cancelEdit();
 			} else {
 				placeEditor();
@@ -382,20 +418,20 @@ public class TableLayout extends AbstractLayout {
 		hoveredCol = -1;
 		hoveredItemStack = null;
 
-		int contentLeft = getX() - hScrollOffset;
-		int listTop = getY() + HEADER_HEIGHT;
-		int rightEdge = getX() + getWidth();
+		int contentLeft = -hScrollOffset;
+		int listTop = HEADER_HEIGHT;
+		int rightEdge = getWidth();
 		int viewport = viewportHeight();
-		int contentBottom = getY() + height - (hasHScroll() ? SCROLLBAR_WIDTH : 0);
+		int contentBottom = height - (hasHScroll() ? SCROLLBAR_WIDTH : 0);
 
-		// 裁剪到表格可视区，防止横向滚动时内容溢出到标题/按钮区
-		ctx.enableScissor(getX(), getY(), getWidth(), height);
+		// 裁剪到表格可视区（屏幕坐标由 AbstractLayout 在 translate 前维护），防止横向滚动时内容溢出到标题/按钮区
+		ctx.enableScissor(absX, absY, getWidth(), height);
 
 		// 表头（横向滚动同步偏移）
 		for (int c = 0; c < headers.length; c++) {
 			int textW = tr.getWidth(headers[c]);
 			int x = alignX(columnSpecs[c].getAlign(), contentLeft + columnX[c], columnWidth[c], textW);
-			ctx.drawTextWithShadow(tr, Text.literal(headers[c]).formatted(Formatting.GOLD), x, getY(), HEADER_COLOR);
+			ctx.drawTextWithShadow(tr, Text.literal(headers[c]).formatted(Formatting.GOLD), x, 0, HEADER_COLOR);
 		}
 
 		// 虚拟滚动：仅渲染可视行
@@ -406,10 +442,10 @@ public class TableLayout extends AbstractLayout {
 			int rowY = listTop + r * rowHeight - scrollOffset;
 			boolean rowHovered = mouseY >= rowY && mouseY < rowY + rowHeight
 					&& mouseY >= listTop && mouseY < contentBottom
-					&& mouseX >= getX() && mouseX <= rightEdge;
+					&& mouseX >= 0 && mouseX <= rightEdge;
 			if (rowHovered) {
 				hoveredRow = r;
-				ctx.fill(getX(), rowY, rightEdge, rowY + rowHeight, ROW_HOVER_BG);
+				ctx.fill(0, rowY, rightEdge, rowY + rowHeight, ROW_HOVER_BG);
 			}
 			renderRow(ctx, r, rowY, contentLeft, mouseX, mouseY);
 		}
@@ -418,8 +454,27 @@ public class TableLayout extends AbstractLayout {
 		if (rowSeparatorColor != 0 && rowSeparatorHeight > 0 && lastRow > firstRow) {
 			for (int r = firstRow; r < lastRow; r++) {
 				int rowY = listTop + r * rowHeight - scrollOffset;
-				if (rowY > getY() + HEADER_HEIGHT) {
-					ctx.fill(getX(), rowY - 1, rightEdge, rowY - 1 + rowSeparatorHeight, rowSeparatorColor);
+				if (rowY > HEADER_HEIGHT) {
+					ctx.fill(0, rowY - 1, rightEdge, rowY - 1 + rowSeparatorHeight, rowSeparatorColor);
+				}
+			}
+		}
+
+		// 拖拽排序反馈：被拖行高亮 + 插入指示线 / 拖出删除提示
+		if (draggingRow && dragStartRow >= 0) {
+			int startRowY = listTop + dragStartRow * rowHeight - scrollOffset;
+			if (startRowY >= listTop && startRowY < contentBottom) {
+				ctx.fill(0, startRowY, rightEdge, startRowY + rowHeight, DRAG_ROW_BG);
+			}
+			if (dragOutOfList) {
+				// 拖出列表：整行红色提示
+				ctx.fill(0, Math.max(listTop, startRowY), rightEdge,
+						Math.min(contentBottom, startRowY + rowHeight), DRAG_DELETE_BG);
+			} else if (dragHoverRow >= 0) {
+				// 插入指示线：目标行上边缘
+				int insertY = listTop + Math.min(dragHoverRow, rows.size()) * rowHeight - scrollOffset;
+				if (insertY >= listTop && insertY <= contentBottom) {
+					ctx.fill(0, insertY - 1, rightEdge, insertY + 1, DRAG_INSERT_LINE);
 				}
 			}
 		}
@@ -443,9 +498,9 @@ public class TableLayout extends AbstractLayout {
 			int trackH = SCROLLBAR_WIDTH;
 			int thumbW = Math.max(20, getWidth() * getWidth() / contentWidth);
 			int thumbX = maxHScroll > 0
-					? getX() + (getWidth() - thumbW) * hScrollOffset / maxHScroll
-					: getX();
-			ctx.fill(getX(), trackY, rightEdge, trackY + trackH, 0x66000000);
+					? (getWidth() - thumbW) * hScrollOffset / maxHScroll
+					: 0;
+			ctx.fill(0, trackY, rightEdge, trackY + trackH, 0x66000000);
 			ctx.fill(thumbX, trackY, thumbX + thumbW, trackY + trackH, 0x99AAAAAA);
 		}
 		ctx.disableScissor();
@@ -458,12 +513,27 @@ public class TableLayout extends AbstractLayout {
 		for (int c = 0; c < n; c++) {
 			// 编辑中的单元格由编辑框接管，不绘制底层文本/内容
 			if (r == editRow && c == editCol) continue;
-			IContentCell cell = row.cells.get(c);
-			if (cell == null) continue;
 			int colLeft = contentLeft + columnX[c];
 			int colW = columnWidth[c];
 			boolean colHovered = hovered && mouseX >= colLeft && mouseX < colLeft + colW;
 			int y = rowY + (rowHeight - 8) / 2;
+			// 拖拽手柄列：左侧绘制手柄字符（业务内容照常渲染）
+			if (c == dragHandleColumn) {
+				ctx.drawTextWithShadow(tr, Text.literal(DRAG_HANDLE_TEXT),
+						colLeft + COL_PADDING / 2, y, 0xFFAAAAAA);
+			}
+			IContentCell cell = row.cells.get(c);
+			if (cell == null) continue;
+			// 可编辑列（非编辑中）：显示 editable 当前值（静默写回后立即反映，无需重建表格）
+			if (row.editable != null && row.editableCol == c) {
+				String cur = row.editable.getValue();
+				int color = cell instanceof TextCell tc ? tc.color() : 0xFFFFFFFF;
+				ctx.drawTextWithShadow(tr, Text.literal(cur),
+						alignX(columnSpecs[c].getAlign(), colLeft + COL_PADDING / 2, colW - COL_PADDING, tr.getWidth(cur)),
+						y, color);
+				if (colHovered) hoveredCol = c;
+				continue;
+			}
 			if (cell instanceof PositionCell pc) {
 				int color = colHovered && pc.onClick() != null ? POSITION_HOVER_COLOR : POSITION_COL_COLOR;
 				ctx.drawTextWithShadow(tr, pc.display(),
@@ -504,13 +574,6 @@ public class TableLayout extends AbstractLayout {
 				if (colHovered) hoveredCol = c;
 			}
 		}
-		int bx = contentLeft + columnX[n - 1] + COL_PADDING / 2;
-		for (RowButton button : row.buttons) {
-			boolean btnHovered = hovered && mouseX >= bx && mouseX < bx + BTN_WIDTH;
-			int color = btnHovered ? button.hoverColor() : 0xFFAAAAAA;
-			ctx.drawTextWithShadow(tr, button.label(), bx, rowY + (rowHeight - 8) / 2, color);
-			bx += BTN_WIDTH + BTN_GAP;
-		}
 	}
 
 	private int alignX(ColumnSpec.Align align, int colLeft, int colWidth, int textWidth) {
@@ -538,31 +601,147 @@ public class TableLayout extends AbstractLayout {
 	@Override
 	protected boolean onMouseClicked(double mouseX, double mouseY, int button) {
 		if (button != 0) return false;
-		if (mouseX < getX() || mouseX > getX() + getWidth()
-				|| mouseY < getY() || mouseY > getY() + height) {
+		if (mouseX < 0 || mouseX > getWidth()
+				|| mouseY < 0 || mouseY > height) {
+			// 表格外点击：离开编辑态
 			if (editor != null) commitEdit();
 			return false;
 		}
-		if (editor != null) {
-			// 点击编辑框外 → 提交并转入命中处理
-			commitEdit();
+		// 横向滚动条区域：thumb 命中进入拖拽态；轨道空白处消费点击（不落入行处理）
+		if (hasHScroll() && mouseY >= height - SCROLLBAR_WIDTH) {
+			if (editor != null) commitEdit();
+			if (hScrollThumbHit(mouseX, mouseY)) {
+				draggingHScroll = true;
+			}
+			return true;
 		}
 		int row = getRowAtY(mouseY);
-		if (row < 0) return false;
-		CellHit hit = hitTest(row, rowYAt(row), getX(), mouseX, mouseY);
-		if (hit == null) return false;
-		if (hit.button() != null) {
-			hit.button().action().run();
-		} else if (hit.editable() != null) {
-			startEdit(row, hit.col());
+		if (row < 0) {
+			// 表头：离开编辑态
+			if (editor != null) commitEdit();
+			return false;
 		}
-		return true;
+		// 拖拽手柄列：按下开始拖拽排序
+		if (hitDragHandle(mouseX, mouseY)) {
+			if (editor != null) commitEdit();
+			draggingRow = true;
+			dragStartRow = row;
+			dragHoverRow = row;
+			dragOutOfList = false;
+			return true;
+		}
+		CellHit hit = hitTest(row, rowYAt(row), 0, mouseX, mouseY);
+		if (hit == null) {
+			// 行内空白：离开编辑态
+			if (editor != null) commitEdit();
+			return false;
+		}
+		if (hit.editable() != null) {
+			// 可编辑格：一次点击直接切换（同格保持 / 异格静默切换），不触发 commit 回调
+			startEdit(row, hit.col());
+			return true;
+		}
+		return false;
+	}
+
+	/** 横向滚动条 thumb 命中检测（局部坐标）。 */
+	private boolean hScrollThumbHit(double mouseX, double mouseY) {
+		if (!hasHScroll()) return false;
+		int trackY = height - SCROLLBAR_WIDTH;
+		if (mouseY < trackY || mouseY > height) return false;
+		int thumbW = Math.max(20, getWidth() * getWidth() / contentWidth);
+		int maxHScroll = getMaxHScroll();
+		int thumbX = maxHScroll > 0
+				? (getWidth() - thumbW) * hScrollOffset / maxHScroll
+				: 0;
+		return mouseX >= thumbX && mouseX < thumbX + thumbW;
+	}
+
+	@Override
+	protected boolean onMouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+		if (button != 0) return false;
+		if (draggingHScroll) {
+			// thumb 拖动：thumb 中心跟随鼠标 X，逆推滚动比例
+			int thumbW = Math.max(20, getWidth() * getWidth() / contentWidth);
+			int trackW = getWidth() - thumbW;
+			double ratio = trackW > 0 ? (mouseX - thumbW / 2.0) / trackW : 0;
+			setHScrollOffset((int) Math.round(ratio * getMaxHScroll()));
+			return true;
+		}
+		if (draggingRow) {
+			updateDragHover(mouseY);
+			// 边缘自动滚动：鼠标靠近视口上/下边缘（阈值 20px）时逐行滚动
+			if (mouseY < HEADER_HEIGHT + DRAG_EDGE_SCROLL_THRESHOLD) {
+				setScrollOffset(scrollOffset - rowHeight);
+			} else if (mouseY > height - SCROLLBAR_WIDTH - DRAG_EDGE_SCROLL_THRESHOLD) {
+				setScrollOffset(scrollOffset + rowHeight);
+			}
+			return true;
+		}
+		return false;
+	}
+
+	/** 拖拽中：根据鼠标 Y 更新悬停目标行与"拖出列表"标志。 */
+	private void updateDragHover(double mouseY) {
+		int listBottom = height - (hasHScroll() ? SCROLLBAR_WIDTH : 0);
+		// 拖出可视区（表头之上或列表可视区之下）→ 删除
+		dragOutOfList = mouseY < HEADER_HEIGHT || mouseY > listBottom;
+		if (dragOutOfList) {
+			dragHoverRow = -1;
+			return;
+		}
+		int row = getRowAtY(mouseY);
+		if (row < 0) {
+			dragHoverRow = rows.size();
+			return;
+		}
+		int rowTop = HEADER_HEIGHT + row * rowHeight - scrollOffset;
+		dragHoverRow = mouseY < rowTop + rowHeight / 2 ? row : row + 1;
+	}
+
+	@Override
+	protected boolean onMouseReleased(double mouseX, double mouseY, int button) {
+		if (button != 0) return false;
+		if (draggingHScroll) {
+			draggingHScroll = false;
+			return true;
+		}
+		if (draggingRow) {
+			updateDragHover(mouseY);
+			boolean out = dragOutOfList;
+			int from = dragStartRow;
+			int to = dragHoverRow;
+			draggingRow = false;
+			dragStartRow = -1;
+			dragHoverRow = -1;
+			dragOutOfList = false;
+			if (out) {
+				if (rowDeleteCallback != null) rowDeleteCallback.onRowDelete(from);
+			} else if (to != from && to != from + 1) {
+				// to 为目标位置（插到该行之前）；相邻/原地不触发移动
+				if (rowMoveCallback != null) rowMoveCallback.onRowMove(from, to);
+			}
+			return true;
+		}
+		return false;
+	}
+
+	/** 窗口失焦时兜底取消拖拽（防止 mouseReleased 丢失导致状态卡死）。 */
+	@Override
+	public void tick() {
+		super.tick();
+		if (draggingRow && !MinecraftClient.getInstance().isWindowFocused()) {
+			draggingRow = false;
+			dragStartRow = -1;
+			dragHoverRow = -1;
+			dragOutOfList = false;
+		}
 	}
 
 	@Override
 	protected boolean onMouseScrolled(double mouseX, double mouseY, double amount) {
-		if (mouseX < getX() || mouseX > getX() + getWidth()
-				|| mouseY < getY() || mouseY > getY() + height) {
+		if (mouseX < 0 || mouseX > getWidth()
+				|| mouseY < 0 || mouseY > height) {
 			return false;
 		}
 		if (Screen.hasShiftDown() && hasHScroll()) {

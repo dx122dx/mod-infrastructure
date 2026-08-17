@@ -44,17 +44,17 @@ public class PanelLayout extends AbstractLayout {
 
 	/**
 	 * 纵向流式排布子节点：从标题栏下方开始，每个子节点占满可用宽度，
-	 * 高度取子节点自身 {@link ILayout#getHeight()}。
+	 * 高度取子节点自身 {@link ILayout#getHeight()}。坐标均为相对本面板（局部坐标系）。
 	 */
 	@Override
 	public void layout() {
 		if (this.children == null || this.children.isEmpty()) {
 			return;
 		}
-		int cursorY = this.y + TITLE_BAR_HEIGHT + 4;
+		int cursorY = TITLE_BAR_HEIGHT + 4;
 		int childWidth = this.width - PADDING * 2;
 		for (ILayout child : this.children) {
-			child.setBounds(this.x + PADDING, cursorY, childWidth, child.getHeight());
+			child.setBounds(PADDING, cursorY, childWidth, child.getHeight());
 			child.layout();
 			cursorY += child.getHeight() + 6;
 		}
@@ -70,18 +70,18 @@ public class PanelLayout extends AbstractLayout {
 		if (this.width <= 0 || this.height <= 0) {
 			return;
 		}
-		// 背景
-		ctx.fill(this.x, this.y, this.x + this.width, this.y + this.height, BACKGROUND_COLOR);
+		// 背景（局部坐标系：本面板左上角为原点）
+		ctx.fill(0, 0, this.width, this.height, BACKGROUND_COLOR);
 		// 边框
-		ctx.drawBorder(this.x, this.y, this.width, this.height, BORDER_COLOR);
+		ctx.drawBorder(0, 0, this.width, this.height, BORDER_COLOR);
 		// 标题（居中金色）
 		if (this.title != null) {
 			TextRenderer tr = MinecraftClient.getInstance().textRenderer;
 			ctx.drawCenteredTextWithShadow(tr, this.title,
-				this.x + this.width / 2, this.y + (TITLE_BAR_HEIGHT - 8) / 2, 0xFFDAA520);
+				this.width / 2, (TITLE_BAR_HEIGHT - 8) / 2, 0xFFDAA520);
 			// 标题下方分隔线
-			ctx.fill(this.x + PADDING, this.y + TITLE_BAR_HEIGHT,
-				this.x + this.width - PADDING, this.y + TITLE_BAR_HEIGHT + 1, 0xFF888888);
+			ctx.fill(PADDING, TITLE_BAR_HEIGHT,
+				this.width - PADDING, TITLE_BAR_HEIGHT + 1, 0xFF888888);
 		}
 	}
 }
