@@ -165,7 +165,7 @@ public class TableLayoutBuilder {
 			return this;
 		}
 
-		/** 提交该行：校验列数后写入表格。 */
+		/** 提交该行：校验列数后写入表格（后续 addRow/build 的自动 commit 将幂等跳过）。 */
 		public RowBuilder done() {
 			if (committed) {
 				throw new IllegalStateException("row already committed");
@@ -174,7 +174,7 @@ public class TableLayoutBuilder {
 				throw new IllegalStateException(
 						"row cell count " + cells.size() + " != header count " + headers.length);
 			}
-			committed = true;
+			commit();
 			return this;
 		}
 
