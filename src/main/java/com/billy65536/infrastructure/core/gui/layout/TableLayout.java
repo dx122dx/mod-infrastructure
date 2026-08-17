@@ -13,6 +13,7 @@ import dev.lambdaurora.spruceui.Position;
 import dev.lambdaurora.spruceui.widget.text.SpruceTextFieldWidget;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -117,7 +118,10 @@ public class TableLayout extends AbstractLayout {
 	private int rowSeparatorHeight;
 
 	private int scrollOffset;
+	private int hScrollOffset;
 	private int[] columnX;
+	/** 构建期内容测量宽（max(表头, 单元格)），作为 reflow 的自适应基准。 */
+	private final int[] naturalWidth;
 	private int[] columnWidth;
 	private int contentWidth;
 
@@ -139,6 +143,7 @@ public class TableLayout extends AbstractLayout {
 		this.rowHeight = rowHeight;
 		this.rows = rows;
 		this.columnX = new int[headers.length];
+		this.naturalWidth = Arrays.copyOf(colWidths, colWidths.length);
 		this.columnWidth = Arrays.copyOf(colWidths, colWidths.length);
 		this.contentWidth = colWidths.length * COL_PADDING;
 		for (int w : colWidths) this.contentWidth += w;
@@ -198,18 +203,15 @@ public class TableLayout extends AbstractLayout {
 	public int getRowHeight() { return rowHeight; }
 	public int getContentWidth() { return contentWidth; }
 
-	/** 按可用宽度重算列宽与列起点：固定列取设定宽，权重列按权重分配，富余给弹性列，超宽按收缩优先级收缩。 */
+	/** 按可用宽度重算列宽与列起点：固定列取设定宽，其余列以内容测量宽为基准（自适应），富余给弹性列，超宽按收缩优先级收缩。 */
 	public void reflow(int availWidth) {
 		int n = columnSpecs.length;
-		int totalWeight = 0;
-		for (ColumnSpec spec : columnSpecs) {
-			if (!spec.isFixed()) totalWeight += Math.max(1, spec.getSize());
-		}
 		int used = 0;
 		for (int i = 0; i < n; i++) {
 			ColumnSpec spec = columnSpecs[i];
-			int w = spec.isFixed() ? spec.getSize()
-					: (totalWeight > 0 ? (int) ((long) Math.max(0, availWidth - COL_PADDING * n) * spec.getSize() / totalWeight) : 0);
+			// 固定列取设定宽；其余列以构建期内容测量宽（max(表头, 单元格)）为自适应基准，
+			// 不再按权重比例分配（参考 chunkscanner 实现）。
+			int w = spec.isFixed() ? spec.getSize() : naturalWidth[i];
 			columnWidth[i] = Math.max(w, spec.getFloorWidth());
 			used += columnWidth[i];
 		}
@@ -221,8 +223,11 @@ public class TableLayout extends AbstractLayout {
 			}
 			if (elasticCount > 0) {
 				int per = overflow / elasticCount;
+				int rem = overflow - per * elasticCount;
 				for (int i = 0; i < n; i++) {
-					if (!columnSpecs[i].isFixed() && columnSpecs[i].isElastic()) columnWidth[i] += per;
+					if (!columnSpecs[i].isFixed() && columnSpecs[i].isElastic()) {
+						columnWidth[i] += per + (rem-- > 0 ? 1 : 0);
+					}
 				}
 			}
 		}
@@ -253,9 +258,22 @@ public class TableLayout extends AbstractLayout {
 
 	/** 行的绝对 Y（含滚动偏移）。 */
 	public int rowYAt(int row) { return getY() + HEADER_HEIGHT + row * rowHeight - scrollOffset; }
-	public int getMaxScroll() { return Math.max(0, rows.size() * rowHeight - (height - HEADER_HEIGHT)); }
+
+	/** 可视视口高度（横向滚动条可见时扣除其高度）。 */
+	private int viewportHeight() {
+		return height - HEADER_HEIGHT - (hasHScroll() ? SCROLLBAR_WIDTH : 0);
+	}
+
+	private boolean hasHScroll() { return contentWidth > getWidth(); }
+
+	public int getMaxScroll() { return Math.max(0, rows.size() * rowHeight - viewportHeight()); }
 	public int getScrollOffset() { return scrollOffset; }
 	public void setScrollOffset(int offset) { scrollOffset = Math.max(0, Math.min(offset, getMaxScroll())); }
+
+	/** 横向滚动范围与偏移（内容宽超过可视宽时出现横向滚动条）。 */
+	public int getMaxHScroll() { return Math.max(0, contentWidth - getWidth()); }
+	public int getHScrollOffset() { return hScrollOffset; }
+	public void setHScrollOffset(int offset) { hScrollOffset = Math.max(0, Math.min(offset, getMaxHScroll())); }
 
 	// ===== 悬停 =====
 	public int getHoveredRow() { return hoveredRow; }
@@ -311,7 +329,7 @@ public class TableLayout extends AbstractLayout {
 	private void placeEditor() {
 		if (editorLayout == null) return;
 		editorLayout.setBounds(
-				getX() + columnX[editCol] + 2,
+				getX() + columnX[editCol] - hScrollOffset + 2,
 				rowYAt(editRow) + 2,
 				Math.max(20, columnWidth[editCol] - 4),
 				Math.max(10, rowHeight - 6));
@@ -324,15 +342,16 @@ public class TableLayout extends AbstractLayout {
 		if (mouseY < rowY || mouseY >= rowY + rowHeight) return null;
 		Row r = rows.get(row);
 		int n = headers.length;
+		int contentLeftX = contentLeft - hScrollOffset;
 		if (!r.buttons.isEmpty() && n > 0) {
-			int bx = contentLeft + columnX[n - 1] + COL_PADDING / 2;
+			int bx = contentLeftX + columnX[n - 1] + COL_PADDING / 2;
 			for (RowButton button : r.buttons) {
 				if (mouseX >= bx && mouseX < bx + BTN_WIDTH) return new CellHit(button, null, n - 1);
 				bx += BTN_WIDTH + BTN_GAP;
 			}
 		}
 		if (r.editable != null && r.editableCol >= 0) {
-			int ex = contentLeft + columnX[r.editableCol];
+			int ex = contentLeftX + columnX[r.editableCol];
 			if (mouseX >= ex && mouseX < ex + columnWidth[r.editableCol]) {
 				return new CellHit(null, r.editable, r.editableCol);
 			}
@@ -363,11 +382,16 @@ public class TableLayout extends AbstractLayout {
 		hoveredCol = -1;
 		hoveredItemStack = null;
 
-		int contentLeft = getX();
+		int contentLeft = getX() - hScrollOffset;
 		int listTop = getY() + HEADER_HEIGHT;
 		int rightEdge = getX() + getWidth();
+		int viewport = viewportHeight();
+		int contentBottom = getY() + height - (hasHScroll() ? SCROLLBAR_WIDTH : 0);
 
-		// 表头
+		// 裁剪到表格可视区，防止横向滚动时内容溢出到标题/按钮区
+		ctx.enableScissor(getX(), getY(), getWidth(), height);
+
+		// 表头（横向滚动同步偏移）
 		for (int c = 0; c < headers.length; c++) {
 			int textW = tr.getWidth(headers[c]);
 			int x = alignX(columnSpecs[c].getAlign(), contentLeft + columnX[c], columnWidth[c], textW);
@@ -376,16 +400,16 @@ public class TableLayout extends AbstractLayout {
 
 		// 虚拟滚动：仅渲染可视行
 		int firstRow = scrollOffset / rowHeight;
-		int visibleRows = Math.max(0, (height - HEADER_HEIGHT) / rowHeight + 1);
+		int visibleRows = Math.max(0, viewport / rowHeight + 1);
 		int lastRow = Math.min(rows.size(), firstRow + visibleRows);
 		for (int r = firstRow; r < lastRow; r++) {
 			int rowY = listTop + r * rowHeight - scrollOffset;
 			boolean rowHovered = mouseY >= rowY && mouseY < rowY + rowHeight
-					&& mouseY >= listTop && mouseY < getY() + height
-					&& mouseX >= contentLeft && mouseX <= rightEdge;
+					&& mouseY >= listTop && mouseY < contentBottom
+					&& mouseX >= getX() && mouseX <= rightEdge;
 			if (rowHovered) {
 				hoveredRow = r;
-				ctx.fill(contentLeft, rowY, rightEdge, rowY + rowHeight, ROW_HOVER_BG);
+				ctx.fill(getX(), rowY, rightEdge, rowY + rowHeight, ROW_HOVER_BG);
 			}
 			renderRow(ctx, r, rowY, contentLeft, mouseX, mouseY);
 		}
@@ -395,13 +419,12 @@ public class TableLayout extends AbstractLayout {
 			for (int r = firstRow; r < lastRow; r++) {
 				int rowY = listTop + r * rowHeight - scrollOffset;
 				if (rowY > getY() + HEADER_HEIGHT) {
-					ctx.fill(contentLeft, rowY - 1, rightEdge, rowY - 1 + rowSeparatorHeight, rowSeparatorColor);
+					ctx.fill(getX(), rowY - 1, rightEdge, rowY - 1 + rowSeparatorHeight, rowSeparatorColor);
 				}
 			}
 		}
 
-		// 滚动条
-		int viewport = height - HEADER_HEIGHT;
+		// 垂直滚动条
 		if (rows.size() * rowHeight > viewport) {
 			int sx = rightEdge - SCROLLBAR_WIDTH;
 			int thumbH = Math.max(20, viewport * viewport / (rows.size() * rowHeight));
@@ -409,9 +432,23 @@ public class TableLayout extends AbstractLayout {
 			int thumbY = maxScroll > 0
 					? listTop + (viewport - thumbH) * scrollOffset / maxScroll
 					: listTop;
-			ctx.fill(sx, listTop, rightEdge, getY() + height, 0x66000000);
+			ctx.fill(sx, listTop, rightEdge, contentBottom, 0x66000000);
 			ctx.fill(sx, thumbY, rightEdge, thumbY + thumbH, 0x99AAAAAA);
 		}
+
+		// 横向滚动条
+		if (hasHScroll()) {
+			int maxHScroll = getMaxHScroll();
+			int trackY = contentBottom;
+			int trackH = SCROLLBAR_WIDTH;
+			int thumbW = Math.max(20, getWidth() * getWidth() / contentWidth);
+			int thumbX = maxHScroll > 0
+					? getX() + (getWidth() - thumbW) * hScrollOffset / maxHScroll
+					: getX();
+			ctx.fill(getX(), trackY, rightEdge, trackY + trackH, 0x66000000);
+			ctx.fill(thumbX, trackY, thumbX + thumbW, trackY + trackH, 0x99AAAAAA);
+		}
+		ctx.disableScissor();
 	}
 
 	private void renderRow(DrawContext ctx, int r, int rowY, int contentLeft, int mouseX, int mouseY) {
@@ -419,6 +456,8 @@ public class TableLayout extends AbstractLayout {
 		int n = headers.length;
 		boolean hovered = r == hoveredRow;
 		for (int c = 0; c < n; c++) {
+			// 编辑中的单元格由编辑框接管，不绘制底层文本/内容
+			if (r == editRow && c == editCol) continue;
 			IContentCell cell = row.cells.get(c);
 			if (cell == null) continue;
 			int colLeft = contentLeft + columnX[c];
@@ -526,7 +565,11 @@ public class TableLayout extends AbstractLayout {
 				|| mouseY < getY() || mouseY > getY() + height) {
 			return false;
 		}
-		setScrollOffset(scrollOffset - (int) (amount * rowHeight * 2));
+		if (Screen.hasShiftDown() && hasHScroll()) {
+			setHScrollOffset(hScrollOffset - (int) (amount * 24));
+		} else {
+			setScrollOffset(scrollOffset - (int) (amount * rowHeight * 2));
+		}
 		return true;
 	}
 
