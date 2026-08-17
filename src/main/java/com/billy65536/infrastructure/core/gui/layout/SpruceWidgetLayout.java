@@ -2,6 +2,9 @@ package com.billy65536.infrastructure.core.gui.layout;
 
 import dev.lambdaurora.spruceui.widget.SpruceWidget;
 import net.minecraft.client.gui.DrawContext;
+import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 将 SpruceUI 控件（SpruceButtonWidget / SpruceTextFieldWidget 等）包装为 ILayout 节点，
@@ -14,6 +17,12 @@ public class SpruceWidgetLayout implements ILayout {
 
 	/** 被包装的 SpruceUI 控件。 */
 	private final SpruceWidget widget;
+
+	/** 错误上报通道（由 ScreenContainer 注入；null 表示未接入错误隔离）。 */
+	@Nullable
+	private ErrorReporter errorReporter;
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(SpruceWidgetLayout.class);
 
 	public SpruceWidgetLayout(SpruceWidget widget) {
 		this.widget = widget;
@@ -63,7 +72,11 @@ public class SpruceWidgetLayout implements ILayout {
 
 	@Override
 	public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
-		this.widget.render(ctx, mouseX, mouseY, delta);
+		try {
+			this.widget.render(ctx, mouseX, mouseY, delta);
+		} catch (Throwable t) {
+			this.reportError(t);
+		}
 	}
 
 	@Override
@@ -83,32 +96,78 @@ public class SpruceWidgetLayout implements ILayout {
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		return this.widget.mouseClicked(mouseX, mouseY, button);
+		try {
+			return this.widget.mouseClicked(mouseX, mouseY, button);
+		} catch (Throwable t) {
+			this.reportError(t);
+			return true;
+		}
 	}
 
 	@Override
 	public boolean mouseReleased(double mouseX, double mouseY, int button) {
-		return this.widget.mouseReleased(mouseX, mouseY, button);
+		try {
+			return this.widget.mouseReleased(mouseX, mouseY, button);
+		} catch (Throwable t) {
+			this.reportError(t);
+			return true;
+		}
 	}
 
 	@Override
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-		return this.widget.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+		try {
+			return this.widget.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+		} catch (Throwable t) {
+			this.reportError(t);
+			return true;
+		}
 	}
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
-		return this.widget.mouseScrolled(mouseX, mouseY, amount);
+		try {
+			return this.widget.mouseScrolled(mouseX, mouseY, amount);
+		} catch (Throwable t) {
+			this.reportError(t);
+			return true;
+		}
 	}
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-		return this.widget.keyPressed(keyCode, scanCode, modifiers);
+		try {
+			return this.widget.keyPressed(keyCode, scanCode, modifiers);
+		} catch (Throwable t) {
+			this.reportError(t);
+			return true;
+		}
 	}
 
 	@Override
 	public boolean charTyped(char chr, int keyCode) {
-		return this.widget.charTyped(chr, keyCode);
+		try {
+			return this.widget.charTyped(chr, keyCode);
+		} catch (Throwable t) {
+			this.reportError(t);
+			return true;
+		}
+	}
+
+	@Override
+	public void setErrorReporter(ErrorReporter reporter) {
+		this.errorReporter = reporter;
+	}
+
+	/**
+	 * 捕获控件异常：上报给容器进入错误隔离态；无上报通道时记录日志并吞掉，避免客户端崩溃。
+	 */
+	private void reportError(Throwable t) {
+		if (this.errorReporter != null) {
+			this.errorReporter.report(t);
+		} else {
+			LOGGER.error("SpruceWidgetLayout 捕获未隔离异常（无上报通道）", t);
+		}
 	}
 
 	@Override

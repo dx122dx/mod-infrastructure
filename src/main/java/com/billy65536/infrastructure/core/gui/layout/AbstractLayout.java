@@ -2,6 +2,8 @@ package com.billy65536.infrastructure.core.gui.layout;
 
 import net.minecraft.client.gui.DrawContext;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,6 +30,12 @@ public abstract class AbstractLayout implements ILayout {
 	/** 子节点列表；null 表示该节点不允许/尚未持有子节点。 */
 	@Nullable
 	protected List<ILayout> children;
+
+	/** 错误上报通道（由 ScreenContainer 注入；null 表示未接入错误隔离）。 */
+	@Nullable
+	private ErrorReporter errorReporter;
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(AbstractLayout.class);
 
 	@Override
 	public void setBounds(int x, int y, int width, int height) {
@@ -63,12 +71,37 @@ public abstract class AbstractLayout implements ILayout {
 			this.children = new ArrayList<>();
 		}
 		this.children.add(child);
+		// 运行期动态加入的子节点（如编辑器等）继承当前上报通道
+		if (this.errorReporter != null) {
+			child.setErrorReporter(this.errorReporter);
+		}
 	}
 
 	@Override
 	@Nullable
 	public List<ILayout> getChildren() {
 		return this.children == null ? Collections.emptyList() : this.children;
+	}
+
+	@Override
+	public void setErrorReporter(ErrorReporter reporter) {
+		this.errorReporter = reporter;
+		if (this.children != null) {
+			for (ILayout child : this.children) {
+				child.setErrorReporter(reporter);
+			}
+		}
+	}
+
+	/**
+	 * 捕获布局异常：上报给容器进入错误隔离态；未接入上报通道时记录日志并吞掉，避免客户端崩溃。
+	 */
+	private void reportError(Throwable t) {
+		if (this.errorReporter != null) {
+			this.errorReporter.report(t);
+		} else {
+			LOGGER.error("布局节点捕获未隔离异常（无上报通道）", t);
+		}
 	}
 
 	/**
@@ -97,13 +130,17 @@ public abstract class AbstractLayout implements ILayout {
 	 */
 	@Override
 	public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
-		this.renderSelf(ctx, mouseX, mouseY, delta);
-		if (this.children != null) {
-			for (ILayout child : this.children) {
-				if (child.isVisible()) {
-					child.render(ctx, mouseX, mouseY, delta);
+		try {
+			this.renderSelf(ctx, mouseX, mouseY, delta);
+			if (this.children != null) {
+				for (ILayout child : this.children) {
+					if (child.isVisible()) {
+						child.render(ctx, mouseX, mouseY, delta);
+					}
 				}
 			}
+		} catch (Throwable t) {
+			this.reportError(t);
 		}
 	}
 
@@ -117,10 +154,14 @@ public abstract class AbstractLayout implements ILayout {
 	 */
 	@Override
 	public void tick() {
-		if (this.children != null) {
-			for (ILayout child : this.children) {
-				child.tick();
+		try {
+			if (this.children != null) {
+				for (ILayout child : this.children) {
+					child.tick();
+				}
 			}
+		} catch (Throwable t) {
+			this.reportError(t);
 		}
 	}
 
@@ -143,16 +184,21 @@ public abstract class AbstractLayout implements ILayout {
 	 */
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		if (this.children != null) {
-			for (int i = this.children.size() - 1; i >= 0; i--) {
-				ILayout child = this.children.get(i);
-				if (child.isVisible() && child.isMouseOver(mouseX, mouseY)
-					&& child.mouseClicked(mouseX, mouseY, button)) {
-					return true;
+		try {
+			if (this.children != null) {
+				for (int i = this.children.size() - 1; i >= 0; i--) {
+					ILayout child = this.children.get(i);
+					if (child.isVisible() && child.isMouseOver(mouseX, mouseY)
+						&& child.mouseClicked(mouseX, mouseY, button)) {
+						return true;
+					}
 				}
 			}
+			return this.onMouseClicked(mouseX, mouseY, button);
+		} catch (Throwable t) {
+			this.reportError(t);
+			return true;
 		}
-		return this.onMouseClicked(mouseX, mouseY, button);
 	}
 
 	/**
@@ -164,16 +210,21 @@ public abstract class AbstractLayout implements ILayout {
 
 	@Override
 	public boolean mouseReleased(double mouseX, double mouseY, int button) {
-		if (this.children != null) {
-			for (int i = this.children.size() - 1; i >= 0; i--) {
-				ILayout child = this.children.get(i);
-				if (child.isVisible() && child.isMouseOver(mouseX, mouseY)
-					&& child.mouseReleased(mouseX, mouseY, button)) {
-					return true;
+		try {
+			if (this.children != null) {
+				for (int i = this.children.size() - 1; i >= 0; i--) {
+					ILayout child = this.children.get(i);
+					if (child.isVisible() && child.isMouseOver(mouseX, mouseY)
+						&& child.mouseReleased(mouseX, mouseY, button)) {
+						return true;
+					}
 				}
 			}
+			return this.onMouseReleased(mouseX, mouseY, button);
+		} catch (Throwable t) {
+			this.reportError(t);
+			return true;
 		}
-		return this.onMouseReleased(mouseX, mouseY, button);
 	}
 
 	protected boolean onMouseReleased(double mouseX, double mouseY, int button) {
@@ -182,16 +233,21 @@ public abstract class AbstractLayout implements ILayout {
 
 	@Override
 	public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
-		if (this.children != null) {
-			for (int i = this.children.size() - 1; i >= 0; i--) {
-				ILayout child = this.children.get(i);
-				if (child.isVisible() && child.isMouseOver(mouseX, mouseY)
-					&& child.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)) {
-					return true;
+		try {
+			if (this.children != null) {
+				for (int i = this.children.size() - 1; i >= 0; i--) {
+					ILayout child = this.children.get(i);
+					if (child.isVisible() && child.isMouseOver(mouseX, mouseY)
+						&& child.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)) {
+						return true;
+					}
 				}
 			}
+			return this.onMouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+		} catch (Throwable t) {
+			this.reportError(t);
+			return true;
 		}
-		return this.onMouseDragged(mouseX, mouseY, button, deltaX, deltaY);
 	}
 
 	protected boolean onMouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
@@ -200,16 +256,21 @@ public abstract class AbstractLayout implements ILayout {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
-		if (this.children != null) {
-			for (int i = this.children.size() - 1; i >= 0; i--) {
-				ILayout child = this.children.get(i);
-				if (child.isVisible() && child.isMouseOver(mouseX, mouseY)
-					&& child.mouseScrolled(mouseX, mouseY, amount)) {
-					return true;
+		try {
+			if (this.children != null) {
+				for (int i = this.children.size() - 1; i >= 0; i--) {
+					ILayout child = this.children.get(i);
+					if (child.isVisible() && child.isMouseOver(mouseX, mouseY)
+						&& child.mouseScrolled(mouseX, mouseY, amount)) {
+						return true;
+					}
 				}
 			}
+			return this.onMouseScrolled(mouseX, mouseY, amount);
+		} catch (Throwable t) {
+			this.reportError(t);
+			return true;
 		}
-		return this.onMouseScrolled(mouseX, mouseY, amount);
 	}
 
 	protected boolean onMouseScrolled(double mouseX, double mouseY, double amount) {
@@ -218,15 +279,20 @@ public abstract class AbstractLayout implements ILayout {
 
 	@Override
 	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-		if (this.children != null) {
-			for (int i = this.children.size() - 1; i >= 0; i--) {
-				ILayout child = this.children.get(i);
-				if (child.isVisible() && child.keyPressed(keyCode, scanCode, modifiers)) {
-					return true;
+		try {
+			if (this.children != null) {
+				for (int i = this.children.size() - 1; i >= 0; i--) {
+					ILayout child = this.children.get(i);
+					if (child.isVisible() && child.keyPressed(keyCode, scanCode, modifiers)) {
+						return true;
+					}
 				}
 			}
+			return this.onKeyPressed(keyCode, scanCode, modifiers);
+		} catch (Throwable t) {
+			this.reportError(t);
+			return true;
 		}
-		return this.onKeyPressed(keyCode, scanCode, modifiers);
 	}
 
 	protected boolean onKeyPressed(int keyCode, int scanCode, int modifiers) {
@@ -235,15 +301,20 @@ public abstract class AbstractLayout implements ILayout {
 
 	@Override
 	public boolean charTyped(char chr, int keyCode) {
-		if (this.children != null) {
-			for (int i = this.children.size() - 1; i >= 0; i--) {
-				ILayout child = this.children.get(i);
-				if (child.isVisible() && child.charTyped(chr, keyCode)) {
-					return true;
+		try {
+			if (this.children != null) {
+				for (int i = this.children.size() - 1; i >= 0; i--) {
+					ILayout child = this.children.get(i);
+					if (child.isVisible() && child.charTyped(chr, keyCode)) {
+						return true;
+					}
 				}
 			}
+			return this.onCharTyped(chr, keyCode);
+		} catch (Throwable t) {
+			this.reportError(t);
+			return true;
 		}
-		return this.onCharTyped(chr, keyCode);
 	}
 
 	protected boolean onCharTyped(char chr, int keyCode) {

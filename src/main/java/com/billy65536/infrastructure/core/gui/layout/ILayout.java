@@ -62,6 +62,15 @@ public interface ILayout {
 
 	boolean charTyped(char chr, int keyCode);
 
+	// ---- 错误隔离 ----
+
+	/**
+	 * 注入错误上报通道并沿子树递归下发。
+	 * 默认空实现：叶子节点无子节点可下发，忽略即可。
+	 */
+	default void setErrorReporter(ErrorReporter reporter) {
+	}
+
 	// ---- 子节点管理 ----
 
 	void addChild(ILayout child);
