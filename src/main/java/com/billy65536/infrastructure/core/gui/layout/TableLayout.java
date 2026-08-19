@@ -292,7 +292,11 @@ public class TableLayout extends AbstractLayout {
 
 	private boolean hasHScroll() { return contentWidth > getWidth(); }
 
-	public int getMaxScroll() { return Math.max(0, rows.size() * rowHeight - viewportHeight()); }
+	/** 最大纵向滚动偏移（向下对齐到整行，避免非整数倍偏移导致行绘制到表头区域）。 */
+	public int getMaxScroll() {
+		int max = Math.max(0, rows.size() * rowHeight - viewportHeight());
+		return (max / rowHeight) * rowHeight;
+	}
 	public int getScrollOffset() { return scrollOffset; }
 	public void setScrollOffset(int offset) { scrollOffset = Math.max(0, Math.min(offset, getMaxScroll())); }
 
@@ -424,8 +428,11 @@ public class TableLayout extends AbstractLayout {
 		int viewport = viewportHeight();
 		int contentBottom = height - (hasHScroll() ? SCROLLBAR_WIDTH : 0);
 
-		// 裁剪到表格可视区（屏幕坐标由 AbstractLayout 在 translate 前维护），防止横向滚动时内容溢出到标题/按钮区
-		ctx.enableScissor(absX, absY, getWidth(), height);
+		// 裁剪到表格可视区：DrawContext.enableScissor 参数为 GUI 逻辑坐标（内部自动乘 scale
+		// 并做 y 翻转），absX/absY 为屏幕绝对逻辑坐标，尺寸为逻辑尺寸，直接传入即可。
+		// 切勿传物理像素——会被二次乘 scale 且 y 翻转错位（GUI scale≠1 时右侧列如冗余列、
+		// 底部滚动条被裁掉、视口错位或出现大缺口）。
+		ctx.enableScissor(absX, absY, width, height);
 
 		// 表头（横向滚动同步偏移）
 		for (int c = 0; c < headers.length; c++) {
@@ -747,7 +754,10 @@ public class TableLayout extends AbstractLayout {
 		if (Screen.hasShiftDown() && hasHScroll()) {
 			setHScrollOffset(hScrollOffset - (int) (amount * 24));
 		} else {
-			setScrollOffset(scrollOffset - (int) (amount * rowHeight * 2));
+			// 偏移对齐到整行（getMaxScroll 已对齐），防止滚轮 amount 非整数时滚动偏移变为
+			// 非 rowHeight 倍数，导致首行部分绘制到表头区域
+			int delta = (int) Math.round(amount * rowHeight * 2);
+			setScrollOffset((scrollOffset - delta) / rowHeight * rowHeight);
 		}
 		return true;
 	}

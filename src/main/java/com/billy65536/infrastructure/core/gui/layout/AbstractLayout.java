@@ -1,5 +1,6 @@
 package com.billy65536.infrastructure.core.gui.layout;
 
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector4f;
@@ -39,7 +40,7 @@ public abstract class AbstractLayout implements ILayout {
 	protected int width;
 	protected int height;
 
-	/** 本节点左上角的屏幕绝对坐标（render 在 translate 前维护；scissor 等屏幕级定位用）。 */
+	/** 本节点左上角的屏幕绝对逻辑坐标（GUI 缩放后坐标系；render 在 translate 前维护；scissor 等屏幕级定位用）。 */
 	protected int absX;
 	protected int absY;
 
@@ -147,11 +148,14 @@ public abstract class AbstractLayout implements ILayout {
 	@Override
 	public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
 		try {
-			// translate 前：把本节点左上角变换为屏幕坐标（供 scissor 等屏幕级定位）
+			// translate 前：把本节点左上角变换为屏幕坐标（供 scissor 等屏幕级定位）。
+			// 矩阵变换结果是物理像素（矩阵含窗口 GUI scale），而 DrawContext.enableScissor
+			// 等屏幕级 API 需要 GUI 逻辑坐标（内部自动乘 scale 并做 y 翻转），故除以 scale 还原。
 			Vector4f screenPos = ctx.getMatrices().peek().getPositionMatrix()
 					.transform(new Vector4f(this.x, this.y, 0.0f, 1.0f));
-			this.absX = Math.round(screenPos.x);
-			this.absY = Math.round(screenPos.y);
+			double scale = MinecraftClient.getInstance().getWindow().getScaleFactor();
+			this.absX = (int) Math.round(screenPos.x / scale);
+			this.absY = (int) Math.round(screenPos.y / scale);
 
 			ctx.getMatrices().push();
 			ctx.getMatrices().translate(this.x, this.y, 0);
