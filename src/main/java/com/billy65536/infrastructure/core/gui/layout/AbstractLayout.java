@@ -40,7 +40,7 @@ public abstract class AbstractLayout implements ILayout {
 	protected int width;
 	protected int height;
 
-	/** 本节点左上角的屏幕绝对逻辑坐标（GUI 缩放后坐标系；render 在 translate 前维护；scissor 等屏幕级定位用）。 */
+	/** 本节点左上角的屏幕绝对逻辑坐标（逻辑像素 = 物理像素 ÷ GUI scale；render 在 translate 前维护；scissor 等屏幕级定位用）。 */
 	protected int absX;
 	protected int absY;
 

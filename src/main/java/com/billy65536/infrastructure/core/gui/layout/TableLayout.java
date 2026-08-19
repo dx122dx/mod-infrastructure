@@ -1,6 +1,5 @@
 package com.billy65536.infrastructure.core.gui.layout;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
@@ -20,7 +19,9 @@ import net.minecraft.util.Formatting;
 
 /**
  * 表格布局（chunkscanner 表格能力 ∪ qab 列表能力的并集）。
- * 能力：表头（金色）/ 单元格（Text/Position/Item）/ 权重列 / 虚拟滚动 / 行按钮 / 编辑框 / tooltip / TSV 导出。
+ * 能力：表头（金色）/ 单元格（Text/Position/Item/多行/动态）/ 权重列 / 自然宽度 reflow /
+ * 虚拟滚动 / 纵向滚动条 / 横向滚动条（Shift+滚轮与 thumb 拖动）/ 编辑框（一次点击切换编辑目标）/
+ * 拖拽排序（手柄列拖动，拖出可视区删除）/ tooltip / TSV 导出。
  */
 public class TableLayout extends AbstractLayout {
 
@@ -428,11 +429,13 @@ public class TableLayout extends AbstractLayout {
 		int viewport = viewportHeight();
 		int contentBottom = height - (hasHScroll() ? SCROLLBAR_WIDTH : 0);
 
-		// 裁剪到表格可视区：DrawContext.enableScissor 参数为 GUI 逻辑坐标（内部自动乘 scale
-		// 并做 y 翻转），absX/absY 为屏幕绝对逻辑坐标，尺寸为逻辑尺寸，直接传入即可。
-		// 切勿传物理像素——会被二次乘 scale 且 y 翻转错位（GUI scale≠1 时右侧列如冗余列、
-		// 底部滚动条被裁掉、视口错位或出现大缺口）。
-		ctx.enableScissor(absX, absY, width, height);
+		// 裁剪到表格可视区：DrawContext.enableScissor(x1,y1,x2,y2) 参数均为 GUI 逻辑坐标
+		// （内部 new ScreenRect(x1,y1,x2-x1,y2-y1)，自动乘 scale 并做 y 翻转），absX/absY 为
+		// 屏幕绝对逻辑坐标；x2/y2 是右下角坐标而非宽高，必须传 absX+width / absY+height。
+		// 切勿传物理像素（会被二次乘 scale 且 y 翻转错位）；也切勿把 width/height 当作 x2/y2
+		// ——后者会让裁剪区底部提前 height 行，把横向滚动条与列表底部内容裁掉（qab 表格
+		// absY=56 时列表下方出现约 56px 空白、横向滚动条消失，正是四问题反复的根因）。
+		ctx.enableScissor(absX, absY, absX + width, absY + height);
 
 		// 表头（横向滚动同步偏移）
 		for (int c = 0; c < headers.length; c++) {
