@@ -2,6 +2,7 @@ package com.billy65536.infrastructure.core.gui;
 
 import com.billy65536.infrastructure.core.gui.layout.ErrorDisplayLayout;
 import com.billy65536.infrastructure.core.gui.layout.ILayout;
+import com.billy65536.infrastructure.core.gui.toast.ToastQueue;
 import dev.lambdaurora.spruceui.Tooltip;
 import dev.lambdaurora.spruceui.screen.SpruceScreen;
 import net.minecraft.client.MinecraftClient;
@@ -25,8 +26,10 @@ import java.time.format.DateTimeFormatter;
  * 注入本容器；本类负责：</p>
  * <ul>
  *   <li>{@link #init()} 时对根节点 setBounds(0,0,宽高) 并递归 init/layout；</li>
- *   <li>{@link #render} 绘制默认背景后递归渲染布局树，并刷新 SpruceUI Tooltip；</li>
- *   <li>鼠标/键盘/tick 事件转发给根节点递归分发（根未消费时回落 SpruceScreen 默认行为）；</li>
+ *   <li>{@link #render} 绘制默认背景后递归渲染布局树，刷新 SpruceUI Tooltip，
+ *       并渲染 toast 队列（错误隔离态同样保留 toast 渲染）；</li>
+ *   <li>鼠标/键盘/tick 事件转发给根节点递归分发（根未消费的点击先尝试命中 toast 关闭对应条目，
+ *       再回落 SpruceScreen 默认行为）；</li>
  *   <li>错误隔离：布局树在渲染 / 事件 / tick 任一环节抛出异常时，由节点级捕获上报本容器，
  *       进入错误隔离态并展示错误详情（可滚动 / 导出 / 关闭），避免异常冒泡导致客户端崩溃。</li>
  * </ul>
@@ -200,6 +203,8 @@ public class ScreenContainer extends SpruceScreen {
 	public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
 		if (this.fatalError != null) {
 			this.renderErrorState(ctx, mouseX, mouseY, delta);
+			// 错误隔离态同样保留 toast 渲染（消息通知与错误展示不冲突）
+			ToastQueue.render(ctx);
 			return;
 		}
 		this.renderBackground(ctx);
@@ -211,6 +216,7 @@ public class ScreenContainer extends SpruceScreen {
 			}
 		}
 		Tooltip.renderAll(ctx);
+		ToastQueue.render(ctx);
 	}
 
 	@Override
@@ -237,6 +243,10 @@ public class ScreenContainer extends SpruceScreen {
 			}
 		} catch (Throwable t) {
 			this.onLayoutError(t);
+			return true;
+		}
+		// 布局树未消费的点击：命中 toast 区域则关闭该条（只消费自身区域，不阻断业务）
+		if (ToastQueue.mouseClicked(mouseX, mouseY)) {
 			return true;
 		}
 		return super.mouseClicked(mouseX, mouseY, button);

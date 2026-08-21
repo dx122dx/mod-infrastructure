@@ -3,10 +3,15 @@ package com.billy65536.infrastructure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.billy65536.infrastructure.core.gui.ScreenContainer;
+import com.billy65536.infrastructure.core.gui.toast.ToastQueue;
 import com.billy65536.infrastructure.core.module.ModuleRegistry;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.Identifier;
 
 /**
@@ -17,8 +22,9 @@ import net.minecraft.util.Identifier;
  *
  * <h2>初始化时序</h2>
  *
- * <p>本类的 {@link #onInitializeClient()} 只做两件事：登记 {@code /inf} 命令回调，
- * 以及把模块发现挂到 {@link ClientLifecycleEvents#CLIENT_STARTED} 上。</p>
+ * <p>本类的 {@link #onInitializeClient()} 共做四件事：登记 {@code /inf} 命令回调、
+ * 把模块发现挂到 {@link ClientLifecycleEvents#CLIENT_STARTED} 上、
+ * 注册 {@link HudRenderCallback} 兜底渲染 toast、注册 {@link ClientTickEvents} 驱动 toast 倒计时。</p>
  *
  * <p>模块发现之所以<b>不</b>在入口点内直接执行：Fabric 按依赖拓扑序调用各模组的
  * {@code client} 入口点，依赖方（infrastructure）必然早于依赖它的模组（如 chunkscanner）。
@@ -46,5 +52,14 @@ public final class InfrastructureMod implements ClientModInitializer {
         InfrastructureCommands.register();
         // 模块发现推迟到所有模组的客户端入口点执行完毕之后
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> ModuleRegistry.discover());
+
+        // toast 通知：无 GUI 时由 HUD 回调兜底渲染（ScreenContainer 打开时由屏幕自身渲染，此处跳过避免双画）
+        HudRenderCallback.EVENT.register((ctx, tickDelta) -> {
+            if (!(MinecraftClient.getInstance().currentScreen instanceof ScreenContainer)) {
+                ToastQueue.render(ctx);
+            }
+        });
+        // toast 倒计时统一驱动
+        ClientTickEvents.END_CLIENT_TICK.register(client -> ToastQueue.tick());
     }
 }
