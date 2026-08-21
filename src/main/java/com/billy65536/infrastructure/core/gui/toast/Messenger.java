@@ -6,6 +6,8 @@ import net.minecraft.text.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collection;
+
 /**
  * 模组消息统一门面：内部按当前界面状态自动路由到「聊天栏」或「Toast + 日志」。
  *
@@ -46,6 +48,31 @@ public final class Messenger {
 			client.player.sendMessage(message, false);
 		} else {
 			LOGGER.info("[msg] {}", message.getString());
+		}
+	}
+
+	/**
+	 * 同批发送多条消息（自动路由，顺序保持）。
+	 *
+	 * <p>「同批」= 一次逻辑操作内连续发送的多条（如数据库校验对 issues 循环告警）：
+	 * Toast 场景下经 {@link ToastQueue#enqueueAll} 全部入队、<b>不受条数上限挤除</b>；
+	 * 聊天场景下逐条发送；玩家未进世界时逐条写日志。</p>
+	 *
+	 * @param messages 同批消息列表
+	 * @param type     消息类型（仅 Toast 场景生效）
+	 */
+	public static void notifyAll(Collection<Text> messages, ToastType type) {
+		MinecraftClient client = MinecraftClient.getInstance();
+		if (client.currentScreen instanceof ScreenContainer) {
+			ToastQueue.enqueueAll(messages, type);
+		} else if (client.player != null) {
+			for (Text message : messages) {
+				client.player.sendMessage(message, false);
+			}
+		} else {
+			for (Text message : messages) {
+				LOGGER.info("[msg] {}", message.getString());
+			}
 		}
 	}
 

@@ -1,22 +1,31 @@
 package com.billy65536.infrastructure.core.gui.toast;
 
+import com.billy65536.infrastructure.core.config.InfrastructureConfigLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.text.OrderedText;
 import net.minecraft.text.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Deque;
+import java.util.List;
 
 /**
  * 客户端 toast 通知队列（HUD 自研实现，无外部依赖）。
  *
- * <p>静态单例：{@link #enqueue} 入队（最多同时显示 {@link #MAX_TOASTS} 条，超出挤掉最旧的），
- * 由全局客户端 tick 驱动 {@link #tick()} 倒计时，超时自动出队；{@link #render} 在屏幕右上角
- * 从上往下堆叠渲染（深色半透明背景 + 类型色左边条 + 白色正文）；{@link #mouseClicked} 支持
- * 点击 toast 立即关闭。</p>
+ * <p>静态单例：{@link #enqueue} 入队（同时显示条数受配置
+ * {@code infrastructure:config/gui.toast.maxToasts} 限制，默认 0 = 无限制），
+ * 由全局客户端 tick 驱动 {@link #tick()} 倒计时，超时自动出队；{@link #render} 在屏幕
+ * <b>左上角</b>从上往下堆叠渲染（深色半透明背景 + 类型色左边条 + 白色正文），文本按
+ * {@code \n} 拆行、超宽自动换行，完整渲染不截断；{@link #mouseClicked} 支持点击 toast 立即关闭。</p>
+ *
+ * <p>「同批」消息（一次逻辑操作内连续发送的多条）经 {@link #enqueueAll} 批量入队，
+ * <b>不受条数上限挤除</b>（靠倒计时自然消失）；单条 {@link #enqueue} 仍按上限挤除最旧。</p>
  *
  * <p>渲染挂点双轨互斥：ScreenContainer 打开时由屏幕自身 render 调用本类渲染；
  * 无 GUI 时由 HudRenderCallback 兜底调用，两处不会同时触发（见 {@code Messenger} 路由）。</p>
@@ -26,24 +35,20 @@ import java.util.Deque;
  */
 public final class ToastQueue {
 
-	/** 同时显示的最大条数。 */
-	public static final int MAX_TOASTS = 3;
-	/** 单条存活时长（tick，20 tick = 1 秒）：4 秒。 */
-	private static final int DURATION_TICKS = 80;
-	/** 距屏幕右边距。 */
-	private static final int MARGIN_RIGHT = 8;
+	/** 距屏幕左边距（左上角定位）。 */
+	private static final int MARGIN_LEFT = 8;
 	/** 距屏幕顶边距。 */
 	private static final int MARGIN_TOP = 8;
 	/** 条与条之间的垂直间距。 */
 	private static final int GAP = 4;
-	/** 单条高度。 */
-	private static final int HEIGHT = 20;
 	/** 类型色竖条宽度。 */
 	private static final int BAR_WIDTH = 3;
 	/** 正文距竖条右侧间距。 */
 	private static final int TEXT_PADDING = 6;
-	/** 单条最大宽度（文本超长时由 TextRenderer 截断显示）。 */
-	private static final int MAX_WIDTH = 200;
+	/** 行与行之间的垂直间距。 */
+	private static final int LINE_GAP = 2;
+	/** 正文上下内边距。 */
+	private static final int VERTICAL_PADDING = 4;
 	/** 背景：深色半透明。 */
 	private static final int BG_COLOR = 0xCC000000;
 	/** 正文颜色：纯白。 */
@@ -60,15 +65,35 @@ public final class ToastQueue {
 	/**
 	 * 入队一条 toast 通知，并按其类型写日志。
 	 *
+	 * <p>同时显示条数受配置 {@code gui.toast.maxToasts} 限制（0 = 无限制）；
+	 * 超限时挤掉最旧的。</p>
+	 *
 	 * @param message 消息文本
 	 * @param type    消息类型（决定左边条颜色与日志级别）
 	 */
 	public static void enqueue(Text message, ToastType type) {
 		QUEUE.addFirst(new Toast(message, type));
-		while (QUEUE.size() > MAX_TOASTS) {
-			QUEUE.removeLast();
+		int maxToasts = InfrastructureConfigLoader.get().gui.toast.maxToasts;
+		if (maxToasts > 0) {
+			while (QUEUE.size() > maxToasts) {
+				QUEUE.removeLast();
+			}
 		}
 		log(type, message.getString());
+	}
+
+	/**
+	 * 同批批量入队：一次逻辑操作内连续发送的多条消息全部保留，
+	 * <b>不受条数上限挤除</b>（靠各自倒计时自然消失），并逐条按类型写日志。
+	 *
+	 * @param messages 同批消息列表（保持给定顺序，首条渲染在最上方）
+	 * @param type     消息类型
+	 */
+	public static void enqueueAll(Collection<Text> messages, ToastType type) {
+		for (Text message : messages) {
+			QUEUE.addFirst(new Toast(message, type));
+			log(type, message.getString());
+		}
 	}
 
 	/**
@@ -91,7 +116,7 @@ public final class ToastQueue {
 	}
 
 	/**
-	 * 渲染所有 toast（右上角堆叠）。GUI 打开时由 ScreenContainer.render 调用，
+	 * 渲染所有 toast（左上角堆叠）。GUI 打开时由 ScreenContainer.render 调用，
 	 * 无 GUI 时由 HudRenderCallback 调用（两处互斥，见 {@code Messenger}）。
 	 *
 	 * @param ctx 绘制上下文（GUI 逻辑坐标）
@@ -101,16 +126,18 @@ public final class ToastQueue {
 			return;
 		}
 		TextRenderer tr = MinecraftClient.getInstance().textRenderer;
-		int screenWidth = ctx.getScaledWindowWidth();
+		int maxWidth = maxWidthOf(ctx.getScaledWindowWidth());
 		int y = MARGIN_TOP;
 		for (Toast toast : QUEUE) {
-			int width = widthOf(tr, toast);
-			int x = screenWidth - MARGIN_RIGHT - width;
-			ctx.fill(x, y, x + width, y + HEIGHT, BG_COLOR);
-			ctx.fill(x, y, x + BAR_WIDTH, y + HEIGHT, toast.type.accentColor());
-			ctx.drawText(tr, toast.message.getString(), x + BAR_WIDTH + TEXT_PADDING,
-					y + (HEIGHT - tr.fontHeight) / 2, TEXT_COLOR, true);
-			y += HEIGHT + GAP;
+			Layout layout = layout(tr, toast, maxWidth, y);
+			ctx.fill(layout.x, layout.y, layout.x + layout.width, layout.y + layout.height, BG_COLOR);
+			ctx.fill(layout.x, layout.y, layout.x + BAR_WIDTH, layout.y + layout.height, toast.type.accentColor());
+			int textY = y + VERTICAL_PADDING;
+			for (OrderedText line : layout.lines) {
+				ctx.drawText(tr, line, layout.x + BAR_WIDTH + TEXT_PADDING, textY, TEXT_COLOR, true);
+				textY += tr.fontHeight + LINE_GAP;
+			}
+			y += layout.height + GAP;
 		}
 	}
 
@@ -126,23 +153,59 @@ public final class ToastQueue {
 			return false;
 		}
 		TextRenderer tr = MinecraftClient.getInstance().textRenderer;
-		int screenWidth = MinecraftClient.getInstance().getWindow().getScaledWidth();
+		int maxWidth = maxWidthOf(MinecraftClient.getInstance().getWindow().getScaledWidth());
 		int y = MARGIN_TOP;
 		for (Toast toast : QUEUE) {
-			int width = widthOf(tr, toast);
-			int x = screenWidth - MARGIN_RIGHT - width;
-			if (mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + HEIGHT) {
+			Layout layout = layout(tr, toast, maxWidth, y);
+			if (mouseX >= layout.x && mouseX <= layout.x + layout.width
+					&& mouseY >= layout.y && mouseY <= layout.y + layout.height) {
 				QUEUE.remove(toast);
 				return true;
 			}
-			y += HEIGHT + GAP;
+			y += layout.height + GAP;
 		}
 		return false;
 	}
 
-	/** 计算单条 toast 宽度（文本宽度 + 竖条 + 双侧内边距，上限 {@link #MAX_WIDTH}）。 */
-	private static int widthOf(TextRenderer tr, Toast toast) {
-		return Math.min(MAX_WIDTH, tr.getWidth(toast.message) + BAR_WIDTH + TEXT_PADDING * 2);
+	/** 当前配置下的单条最大宽度（屏幕逻辑宽度 × maxWidthPercent / 100）。 */
+	private static int maxWidthOf(int screenWidth) {
+		int percent = InfrastructureConfigLoader.get().gui.toast.maxWidthPercent;
+		return Math.max(1, screenWidth * percent / 100);
+	}
+
+	/**
+	 * 文本按 {@code \n} 拆段，每段再按 {@code maxTextWidth} 自动换行，
+	 * 保证完整渲染不截断。返回 {@link OrderedText} 行以保留原样式（含格式码）。
+	 */
+	private static List<OrderedText> wrappedLines(TextRenderer tr, Text message, int maxTextWidth) {
+		List<OrderedText> lines = new ArrayList<>();
+		for (String segment : message.getString().split("\n", -1)) {
+			// 1.20.1 的 TextRenderer 无 getWrappedLines；用 public wrapLines(StringVisitable, int)
+			lines.addAll(tr.wrapLines(Text.literal(segment), Math.max(1, maxTextWidth)));
+		}
+		return lines;
+	}
+
+	/**
+	 * 计算单条 toast 的布局（render 与 mouseClicked 共用，消除 WET）：
+	 * 左上角定位，宽度自适应（上限 maxWidth），高度随换行行数动态增长。
+	 */
+	private static Layout layout(TextRenderer tr, Toast toast, int maxWidth, int topY) {
+		int maxTextWidth = maxWidth - BAR_WIDTH - TEXT_PADDING * 2;
+		List<OrderedText> lines = wrappedLines(tr, toast.message, maxTextWidth);
+		int longest = 0;
+		for (OrderedText line : lines) {
+			longest = Math.max(longest, tr.getWidth(line));
+		}
+		int width = Math.min(maxWidth, longest + BAR_WIDTH + TEXT_PADDING * 2);
+		int height = lines.size() * tr.fontHeight
+				+ Math.max(0, lines.size() - 1) * LINE_GAP
+				+ VERTICAL_PADDING * 2;
+		return new Layout(MARGIN_LEFT, topY, width, height, lines);
+	}
+
+	/** 单条 toast 的布局结果（坐标 + 尺寸 + 换行后的行列表）。 */
+	private record Layout(int x, int y, int width, int height, List<OrderedText> lines) {
 	}
 
 	/** 单条 toast 数据（可变剩余时长，由 tick 驱动递减）。 */
@@ -155,7 +218,8 @@ public final class ToastQueue {
 		Toast(Text message, ToastType type) {
 			this.message = message;
 			this.type = type;
-			this.remainingTicks = DURATION_TICKS;
+			// 入队时现取配置，已入队条目不刷新时长。
+			this.remainingTicks = InfrastructureConfigLoader.get().gui.toast.durationTicks;
 		}
 	}
 }

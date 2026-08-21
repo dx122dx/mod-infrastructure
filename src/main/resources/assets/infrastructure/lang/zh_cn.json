@@ -33,6 +33,8 @@
     "infrastructure.msg.module_debugger_desc": "内置调试模块：执行调试动作、开关调试特性，并通过 /inf dbg 命令树查看它们。",
     "infrastructure.msg.module_utilities_name": "实用工具",
     "infrastructure.msg.module_utilities_desc": "内置实用工具模块：提供模组常用功能。",
+    "infrastructure.msg.module_infrastructure_name": "主框架",
+    "infrastructure.msg.module_infrastructure_desc": "infrastructure 主模块：承载框架级固定配置。",
 
     "infrastructure.msg.module_not_found": "未找到模块：%s",
     "infrastructure.msg.module_config_none": "模块 %s 未注册配置。",
@@ -124,5 +126,15 @@
     "text.autoconfig.infrastructure-security.option.allowDebugOverride": "允许调试覆盖",
     "text.autoconfig.infrastructure-security.option.allowDebugOverride.@Tooltip": "是否允许客户端绕过安全约束进行调试；受默认锁保护，正常应保持关闭。",
     "text.autoconfig.infrastructure-security.option.allowPolicyOverride": "允许策略覆盖",
-    "text.autoconfig.infrastructure-security.option.allowPolicyOverride.@Tooltip": "是否允许外部来源（调试动作 / 服务端指令）经 Override 补丁覆盖安全配置；受默认锁保护，进入多人服务器后锁定为关闭。"
+    "text.autoconfig.infrastructure-security.option.allowPolicyOverride.@Tooltip": "是否允许外部来源（调试动作 / 服务端指令）经 Override 补丁覆盖安全配置；受默认锁保护，进入多人服务器后锁定为关闭。",
+
+    "text.autoconfig.infrastructure-config.title": "Billy's Mod infrastructure 设置",
+    "text.autoconfig.infrastructure-config.option.gui": "界面",
+    "text.autoconfig.infrastructure-config.option.gui.toast": "Toast 通知",
+    "text.autoconfig.infrastructure-config.option.gui.toast.maxWidthPercent": "最大宽度（%）",
+    "text.autoconfig.infrastructure-config.option.gui.toast.maxWidthPercent.@Tooltip": "单条通知的最大宽度占屏幕逻辑宽度的百分比；超过后文本自动换行。",
+    "text.autoconfig.infrastructure-config.option.gui.toast.durationTicks": "显示时长（tick）",
+    "text.autoconfig.infrastructure-config.option.gui.toast.durationTicks.@Tooltip": "单条通知的显示时长（20 tick = 1 秒）。",
+    "text.autoconfig.infrastructure-config.option.gui.toast.maxToasts": "同时显示条数",
+    "text.autoconfig.infrastructure-config.option.gui.toast.maxToasts.@Tooltip": "同时显示的条数上限（0 = 无限制）；仅单条通知受此限制，同批通知不受挤除。"
 }

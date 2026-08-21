@@ -33,6 +33,8 @@
     "infrastructure.msg.module_debugger_desc": "Built-in debug module: run debug actions, toggle debug features, and inspect them via the /inf dbg command tree.",
     "infrastructure.msg.module_utilities_name": "Utilities",
     "infrastructure.msg.module_utilities_desc": "Built-in utilities module: provides common mod functionality.",
+    "infrastructure.msg.module_infrastructure_name": "Core Framework",
+    "infrastructure.msg.module_infrastructure_desc": "infrastructure core module: hosts framework-level fixed config.",
 
     "infrastructure.msg.module_not_found": "Module not found: %s",
     "infrastructure.msg.module_config_none": "Module %s has no registered config.",
@@ -124,5 +126,15 @@
     "text.autoconfig.infrastructure-security.option.allowDebugOverride": "Allow Debug Override",
     "text.autoconfig.infrastructure-security.option.allowDebugOverride.@Tooltip": "Whether to allow the client to bypass security constraints for debugging; protected by the default lock, keep it off normally.",
     "text.autoconfig.infrastructure-security.option.allowPolicyOverride": "Allow Policy Override",
-    "text.autoconfig.infrastructure-security.option.allowPolicyOverride.@Tooltip": "Whether to allow external sources (debug actions / server commands) to override security config via override patches; protected by the default lock and locked to off after joining a multiplayer server."
+    "text.autoconfig.infrastructure-security.option.allowPolicyOverride.@Tooltip": "Whether to allow external sources (debug actions / server commands) to override security config via override patches; protected by the default lock and locked to off after joining a multiplayer server.",
+
+    "text.autoconfig.infrastructure-config.title": "Billy's Mod infrastructure Settings",
+    "text.autoconfig.infrastructure-config.option.gui": "GUI",
+    "text.autoconfig.infrastructure-config.option.gui.toast": "Toast Notifications",
+    "text.autoconfig.infrastructure-config.option.gui.toast.maxWidthPercent": "Max Width (%)",
+    "text.autoconfig.infrastructure-config.option.gui.toast.maxWidthPercent.@Tooltip": "Maximum width of a single toast as a percentage of the screen logical width; text wraps beyond this.",
+    "text.autoconfig.infrastructure-config.option.gui.toast.durationTicks": "Duration (ticks)",
+    "text.autoconfig.infrastructure-config.option.gui.toast.durationTicks.@Tooltip": "How long a single toast stays visible (20 ticks = 1 second).",
+    "text.autoconfig.infrastructure-config.option.gui.toast.maxToasts": "Max Visible Toasts",
+    "text.autoconfig.infrastructure-config.option.gui.toast.maxToasts.@Tooltip": "Maximum number of toasts shown at once (0 = unlimited); only single notifications are limited, batched ones are never evicted."
 }

@@ -1,2 +1,3 @@
 com.billy65536.infrastructure.debugger.DebuggerModule
 com.billy65536.infrastructure.security.SecurityManagerModule
+com.billy65536.infrastructure.core.module.InfrastructureModule
