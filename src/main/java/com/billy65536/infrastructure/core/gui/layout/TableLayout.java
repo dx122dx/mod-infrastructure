@@ -19,9 +19,10 @@ import net.minecraft.util.Formatting;
 
 /**
  * 表格布局（chunkscanner 表格能力 ∪ qab 列表能力的并集）。
- * 能力：表头（金色）/ 单元格（Text/Position/Item/多行/动态）/ 权重列 / 自然宽度 reflow /
+ * 能力：表头（金色）/ 单元格（Text/Position/Item/多行/动态/Button）/ 权重列 / 自然宽度 reflow /
  * 虚拟滚动 / 纵向滚动条 / 横向滚动条（Shift+滚轮与 thumb 拖动）/ 编辑框（一次点击切换编辑目标）/
- * 拖拽排序（手柄列拖动，拖出可视区删除）/ tooltip / TSV 导出。
+ * 拖拽排序（手柄列拖动，拖出可视区删除）/ tooltip / TSV 导出 / PositionCell 左键/右键回调 /
+ * ButtonCell 点击回调。
  */
 public class TableLayout extends AbstractLayout {
 
@@ -593,9 +594,17 @@ public class TableLayout extends AbstractLayout {
 				continue;
 			}
 			if (cell instanceof PositionCell pc) {
-				int color = colHovered && pc.onClick() != null ? POSITION_HOVER_COLOR : POSITION_COL_COLOR;
+				int color = colHovered && (pc.onClick() != null || pc.onRightClick() != null)
+						? POSITION_HOVER_COLOR : POSITION_COL_COLOR;
 				ctx.drawTextWithShadow(tr, pc.display(),
 						alignX(columnSpecs[c].getAlign(), colLeft + COL_PADDING / 2, colW - COL_PADDING, tr.getWidth(pc.display())),
+						y, color);
+				if (colHovered) hoveredCol = c;
+			} else if (cell instanceof ButtonCell bc) {
+				// 按钮单元格：普通/悬停双色文本
+				int color = colHovered ? bc.hoverColor() : bc.color();
+				ctx.drawTextWithShadow(tr, bc.display(),
+						alignX(columnSpecs[c].getAlign(), colLeft + COL_PADDING / 2, colW - COL_PADDING, tr.getWidth(bc.display())),
 						y, color);
 				if (colHovered) hoveredCol = c;
 			} else if (cell instanceof ItemCell ic) {
@@ -646,6 +655,7 @@ public class TableLayout extends AbstractLayout {
 		if (cell == null) return "";
 		if (cell instanceof TextCell tc) return tc.text().getString();
 		if (cell instanceof PositionCell pc) return pc.display().getString();
+		if (cell instanceof ButtonCell bc) return bc.display().getString();
 		if (cell instanceof ItemCell ic) return ic.stack().getName().getString();
 		if (cell instanceof MultiLineTextCell mlc) {
 			List<String> lines = mlc.displayLines();
@@ -658,56 +668,76 @@ public class TableLayout extends AbstractLayout {
 	// ===== 事件 =====
 	@Override
 	protected boolean onMouseClicked(double mouseX, double mouseY, int button) {
-		if (button != 0) return false;
+		if (button != 0 && button != 1) return false;
 		if (mouseX < 0 || mouseX > getWidth()
 				|| mouseY < 0 || mouseY > height) {
 			// 表格外点击：离开编辑态
 			if (editor != null) commitEdit();
 			return false;
 		}
-		// 横向滚动条区域：thumb 命中进入拖拽态；轨道空白处消费点击（不落入行处理）
-		if (hasHScroll() && mouseY >= height - SCROLLBAR_WIDTH) {
-			if (editor != null) commitEdit();
-			if (hScrollThumbHit(mouseX, mouseY)) {
-				draggingHScroll = true;
+		if (button == 0) {
+			// 横向滚动条区域：thumb 命中进入拖拽态；轨道空白处消费点击（不落入行处理）
+			if (hasHScroll() && mouseY >= height - SCROLLBAR_WIDTH) {
+				if (editor != null) commitEdit();
+				if (hScrollThumbHit(mouseX, mouseY)) {
+					draggingHScroll = true;
+				}
+				return true;
 			}
-			return true;
-		}
-		int row = getRowAtY(mouseY);
-		if (row < 0) {
-			// 表头：离开编辑态
-			if (editor != null) commitEdit();
+			int row = getRowAtY(mouseY);
+			if (row < 0) {
+				// 表头：离开编辑态
+				if (editor != null) commitEdit();
+				return false;
+			}
+			// 拖拽手柄列：按下开始拖拽排序
+			if (hitDragHandle(mouseX, mouseY)) {
+				if (editor != null) commitEdit();
+				draggingRow = true;
+				dragStartRow = row;
+				dragHoverRow = row;
+				dragOutOfList = false;
+				return true;
+			}
+			// ButtonCell / PositionCell 列：命中可点击格时执行回调并消费事件（按钮优先于行点击）
+			int clickedCol = getColumnAtX(mouseX);
+			if (clickedCol >= 0 && clickedCol < rows.get(row).cells.size()) {
+				IContentCell cell = rows.get(row).cells.get(clickedCol);
+				if (cell instanceof ButtonCell bc && bc.onClick() != null) {
+					if (editor != null) commitEdit();
+					bc.onClick().run();
+					return true;
+				}
+				if (cell instanceof PositionCell pc && pc.onClick() != null) {
+					if (editor != null) commitEdit();
+					pc.onClick().run();
+					return true;
+				}
+			}
+			CellHit hit = hitTest(row, rowYAt(row), 0, mouseX, mouseY);
+			if (hit == null) {
+				// 行内空白：离开编辑态
+				if (editor != null) commitEdit();
+				return false;
+			}
+			if (hit.editable() != null) {
+				// 可编辑格：一次点击直接切换（同格保持 / 异格静默切换），不触发 commit 回调
+				startEdit(row, hit.col());
+				return true;
+			}
 			return false;
 		}
-		// 拖拽手柄列：按下开始拖拽排序
-		if (hitDragHandle(mouseX, mouseY)) {
-			if (editor != null) commitEdit();
-			draggingRow = true;
-			dragStartRow = row;
-			dragHoverRow = row;
-			dragOutOfList = false;
-			return true;
-		}
-		// PositionCell 列：命中可点击格时执行回调并消费事件（按钮优先于行点击）
+		// 右键：仅分派 PositionCell 右键回调（命中且非 null 才执行并消费）
+		int row = getRowAtY(mouseY);
+		if (row < 0) return false;
 		int clickedCol = getColumnAtX(mouseX);
 		if (clickedCol >= 0 && clickedCol < rows.get(row).cells.size()) {
 			IContentCell cell = rows.get(row).cells.get(clickedCol);
-			if (cell instanceof PositionCell pc && pc.onClick() != null) {
+			if (cell instanceof PositionCell pc && pc.onRightClick() != null) {
 				if (editor != null) commitEdit();
-				pc.onClick().run();
+				pc.onRightClick().run();
 				return true;
 			}
-		}
-		CellHit hit = hitTest(row, rowYAt(row), 0, mouseX, mouseY);
-		if (hit == null) {
-			// 行内空白：离开编辑态
-			if (editor != null) commitEdit();
-			return false;
-		}
-		if (hit.editable() != null) {
-			// 可编辑格：一次点击直接切换（同格保持 / 异格静默切换），不触发 commit 回调
-			startEdit(row, hit.col());
-			return true;
 		}
 		return false;
 	}

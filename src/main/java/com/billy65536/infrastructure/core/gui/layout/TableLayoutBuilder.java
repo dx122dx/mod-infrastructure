@@ -137,15 +137,45 @@ public class TableLayoutBuilder {
 			return this;
 		}
 
-		/** 位置单元格（文本 + 可选点击回调）。 */
+		/** 位置单元格（文本 + 左键回调）。 */
 		public RowBuilder position(String display, Runnable onClick) {
 			cells.add(PositionCell.of(display, onClick));
 			return this;
 		}
 
-		/** 位置单元格（文本 + 可选点击回调）。 */
+		/** 位置单元格（文本 + 左键回调）。 */
 		public RowBuilder position(Text display, Runnable onClick) {
 			cells.add(PositionCell.of(display, onClick));
+			return this;
+		}
+
+		/** 位置单元格（文本 + 左键/右键回调）。 */
+		public RowBuilder position(String display, Runnable onClick, Runnable onRightClick) {
+			cells.add(PositionCell.of(display, onClick, onRightClick));
+			return this;
+		}
+
+		/** 位置单元格（文本 + 左键/右键回调）。 */
+		public RowBuilder position(Text display, Runnable onClick, Runnable onRightClick) {
+			cells.add(PositionCell.of(display, onClick, onRightClick));
+			return this;
+		}
+
+		/** 按钮单元格（文本 + 点击回调，默认白/黄双色）。 */
+		public RowBuilder button(String display, Runnable onClick) {
+			cells.add(ButtonCell.of(display, onClick));
+			return this;
+		}
+
+		/** 按钮单元格（文本 + 点击回调，默认白/黄双色）。 */
+		public RowBuilder button(Text display, Runnable onClick) {
+			cells.add(ButtonCell.of(display, onClick));
+			return this;
+		}
+
+		/** 带色按钮单元格（文本 + 点击回调）。 */
+		public RowBuilder button(Text display, int color, int hoverColor, Runnable onClick) {
+			cells.add(new ButtonCell(display, color, hoverColor, onClick));
 			return this;
 		}
 
