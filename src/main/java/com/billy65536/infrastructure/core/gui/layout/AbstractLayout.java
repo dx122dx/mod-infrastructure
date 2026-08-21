@@ -203,9 +203,9 @@ public abstract class AbstractLayout implements ILayout {
 
 	@Override
 	public boolean isMouseOver(double mouseX, double mouseY) {
-		// 局部坐标判断（父节点已换算传入）
-		return mouseX >= 0 && mouseX <= this.width
-			&& mouseY >= 0 && mouseY <= this.height;
+		// 入参为父局部坐标（与事件分发语义一致，见 ILayout 约定），需还原自身偏移后判断
+		return mouseX >= this.x && mouseX <= this.x + this.width
+			&& mouseY >= this.y && mouseY <= this.y + this.height;
 	}
 
 	// ---- 事件分发 ----

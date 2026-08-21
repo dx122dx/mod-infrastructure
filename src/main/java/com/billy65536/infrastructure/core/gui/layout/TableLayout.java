@@ -35,7 +35,7 @@ public class TableLayout extends AbstractLayout {
 	private static final int HEADER_COLOR = 0xFFFFAA00;
 	private static final int ROW_HOVER_BG = 0x18FFFFFF;
 	/** 选中行高亮背景（金色半透明）。 */
-	private static final int HIGHLIGHT_ROW_BG = 0x30FFAA00;
+	private static final int HIGHLIGHT_ROW_BG = 0x60FFAA00;
 	/** 拖拽手柄字符。 */
 	private static final String DRAG_HANDLE_TEXT = "\u280F";
 	/** 拖拽中：距视口上/下边缘该距离内触发边缘自动滚动。 */
@@ -305,6 +305,23 @@ public class TableLayout extends AbstractLayout {
 	}
 	public int getScrollOffset() { return scrollOffset; }
 	public void setScrollOffset(int offset) { scrollOffset = Math.max(0, Math.min(offset, getMaxScroll())); }
+
+	/**
+	 * 滚动使指定行进入视口（越界索引忽略）。
+	 * 行在视口上方则滚至行顶对齐表头下缘；在视口下方则滚至行底对齐视口底部。
+	 */
+	public void scrollToRow(int row) {
+		if (row < 0 || row >= rows.size()) {
+			return;
+		}
+		int rowTop = HEADER_HEIGHT + row * rowHeight - scrollOffset;
+		int viewH = viewportHeight();
+		if (rowTop < HEADER_HEIGHT) {
+			setScrollOffset(scrollOffset - (HEADER_HEIGHT - rowTop));
+		} else if (rowTop + rowHeight > viewH + HEADER_HEIGHT) {
+			setScrollOffset(scrollOffset + (rowTop + rowHeight - viewH - HEADER_HEIGHT));
+		}
+	}
 
 	/** 横向滚动范围与偏移（内容宽超过可视宽时出现横向滚动条）。 */
 	public int getMaxHScroll() { return Math.max(0, contentWidth - getWidth()); }
