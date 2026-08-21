@@ -34,6 +34,8 @@ public class TableLayout extends AbstractLayout {
 	private static final int SCROLLBAR_WIDTH = 6;
 	private static final int HEADER_COLOR = 0xFFFFAA00;
 	private static final int ROW_HOVER_BG = 0x18FFFFFF;
+	/** 选中行高亮背景（金色半透明）。 */
+	private static final int HIGHLIGHT_ROW_BG = 0x30FFAA00;
 	/** 拖拽手柄字符。 */
 	private static final String DRAG_HANDLE_TEXT = "\u280F";
 	/** 拖拽中：距视口上/下边缘该距离内触发边缘自动滚动。 */
@@ -138,6 +140,9 @@ public class TableLayout extends AbstractLayout {
 	private int hoveredRow = -1;
 	private int hoveredCol = -1;
 	private ItemStack hoveredItemStack;
+
+	/** 选中行索引（-1 表示无），仅作背景高亮提示，不影响点击/编辑逻辑。 */
+	private int highlightedRow = -1;
 
 	private int editRow = -1;
 	private int editCol = -1;
@@ -306,6 +311,19 @@ public class TableLayout extends AbstractLayout {
 	public int getHScrollOffset() { return hScrollOffset; }
 	public void setHScrollOffset(int offset) { hScrollOffset = Math.max(0, Math.min(offset, getMaxHScroll())); }
 
+	// ===== 高亮 =====
+	/** 当前选中行索引（-1 表示无）。 */
+	public int getHighlightedRow() { return highlightedRow; }
+
+	/** 设置选中行索引（-1 清除）。范围越界自动收敛到有效行。 */
+	public void setHighlightedRow(int row) {
+		if (rows.isEmpty()) {
+			highlightedRow = -1;
+		} else {
+			highlightedRow = row >= rows.size() ? rows.size() - 1 : Math.max(-1, row);
+		}
+	}
+
 	// ===== 悬停 =====
 	public int getHoveredRow() { return hoveredRow; }
 	public int getHoveredCol() { return hoveredCol; }
@@ -400,6 +418,16 @@ public class TableLayout extends AbstractLayout {
 		return mouseX >= hx && mouseX < hx + hw;
 	}
 
+	/** 鼠标 X（局部坐标）→ 列索引；未命中任何列返回 -1。 */
+	public int getColumnAtX(double mouseX) {
+		int contentLeftX = -hScrollOffset;
+		for (int c = 0; c < headers.length; c++) {
+			int cx = contentLeftX + columnX[c];
+			if (mouseX >= cx && mouseX < cx + columnWidth[c]) return c;
+		}
+		return -1;
+	}
+
 	/** 鼠标 Y → 行索引（-1 表示表头或表格外）。 */
 	public int getRowAtY(double mouseY) {
 		double rel = mouseY - HEADER_HEIGHT + scrollOffset;
@@ -453,6 +481,9 @@ public class TableLayout extends AbstractLayout {
 			boolean rowHovered = mouseY >= rowY && mouseY < rowY + rowHeight
 					&& mouseY >= listTop && mouseY < contentBottom
 					&& mouseX >= 0 && mouseX <= rightEdge;
+			if (r == highlightedRow) {
+				ctx.fill(0, rowY, rightEdge, rowY + rowHeight, HIGHLIGHT_ROW_BG);
+			}
 			if (rowHovered) {
 				hoveredRow = r;
 				ctx.fill(0, rowY, rightEdge, rowY + rowHeight, ROW_HOVER_BG);
@@ -639,6 +670,16 @@ public class TableLayout extends AbstractLayout {
 			dragHoverRow = row;
 			dragOutOfList = false;
 			return true;
+		}
+		// PositionCell 列：命中可点击格时执行回调并消费事件（按钮优先于行点击）
+		int clickedCol = getColumnAtX(mouseX);
+		if (clickedCol >= 0 && clickedCol < rows.get(row).cells.size()) {
+			IContentCell cell = rows.get(row).cells.get(clickedCol);
+			if (cell instanceof PositionCell pc && pc.onClick() != null) {
+				if (editor != null) commitEdit();
+				pc.onClick().run();
+				return true;
+			}
 		}
 		CellHit hit = hitTest(row, rowYAt(row), 0, mouseX, mouseY);
 		if (hit == null) {
