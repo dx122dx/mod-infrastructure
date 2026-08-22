@@ -3,7 +3,6 @@ package com.billy65536.infrastructure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.billy65536.infrastructure.core.gui.ScreenContainer;
 import com.billy65536.infrastructure.core.gui.toast.ToastQueue;
 import com.billy65536.infrastructure.core.module.ModuleRegistry;
 
@@ -53,10 +52,17 @@ public final class InfrastructureMod implements ClientModInitializer {
         // 模块发现推迟到所有模组的客户端入口点执行完毕之后
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> ModuleRegistry.discover());
 
-        // toast 通知：无 GUI 时由 HUD 回调兜底渲染（ScreenContainer 打开时由屏幕自身渲染，此处跳过避免双画）
+        // toast 通知：仅无 GUI 时由 HUD 回调兜底渲染（ScreenContainer 打开时由屏幕自身渲染，此处跳过避免双画）。
+        // 1.20.1 中 InGameHud.render 在任意 GUI 打开时仍会被调用（GameRenderer 实证：!hudHidden || currentScreen != null），
+        // 且 Screen 渲染在 HUD 之后；若非 ScreenContainer 的 GUI（背包/暂停/聊天/配置界面等）打开时在此渲染，
+        // toast 会被该 GUI 背景覆盖显示在下方，故条件收紧为 currentScreen == null。
         HudRenderCallback.EVENT.register((ctx, tickDelta) -> {
-            if (!(MinecraftClient.getInstance().currentScreen instanceof ScreenContainer)) {
-                ToastQueue.render(ctx);
+            if (MinecraftClient.getInstance().currentScreen == null) {
+                MinecraftClient client = MinecraftClient.getInstance();
+                // Mouse.getX()/getY() 返回物理像素坐标，需按 Screen 惯例换算为逻辑坐标（与 GameRenderer 传给 Screen 的算法一致）
+                double mouseX = client.mouse.getX() * client.getWindow().getScaledWidth() / client.getWindow().getWidth();
+                double mouseY = client.mouse.getY() * client.getWindow().getScaledHeight() / client.getWindow().getHeight();
+                ToastQueue.render(ctx, mouseX, mouseY);
             }
         });
         // toast 倒计时统一驱动

@@ -136,5 +136,7 @@
     "text.autoconfig.infrastructure-config.option.gui.toast.durationTicks": "显示时长（tick）",
     "text.autoconfig.infrastructure-config.option.gui.toast.durationTicks.@Tooltip": "单条通知的显示时长（20 tick = 1 秒）。",
     "text.autoconfig.infrastructure-config.option.gui.toast.maxToasts": "同时显示条数",
-    "text.autoconfig.infrastructure-config.option.gui.toast.maxToasts.@Tooltip": "同时显示的条数上限（0 = 无限制）；仅单条通知受此限制，同批通知不受挤除。"
+    "text.autoconfig.infrastructure-config.option.gui.toast.maxToasts.@Tooltip": "同时显示的条数上限（0 = 无限制）；仅单条通知受此限制，同批通知不受挤除。",
+    "text.autoconfig.infrastructure-config.option.gui.toast.bgOpacityPercent": "背景透明度（%）",
+    "text.autoconfig.infrastructure-config.option.gui.toast.bgOpacityPercent.@Tooltip": "Toast 背景的透明度百分比（0-100，默认 20%）；鼠标悬浮时在常态基础上加亮约 40%。"
 }

@@ -56,6 +56,16 @@ public class InfrastructureConfig implements ConfigData {
              */
             @ConfigEntry.Gui.Tooltip
             public int maxToasts = 0;
+
+            /**
+             * 背景透明度（百分比，0-100）。
+             *
+             * <p>渲染时换算为 ARGB alpha = percent × 255 / 100；默认 20%。
+             * 鼠标悬浮时在常态基础上加亮约 40%（alpha = min(255, 常态 + 40% × 255)）。</p>
+             */
+            @ConfigEntry.Gui.Tooltip
+            @ConfigEntry.BoundedDiscrete(min = 0, max = 100)
+            public int bgOpacityPercent = 20;
         }
     }
 
@@ -71,6 +81,10 @@ public class InfrastructureConfig implements ConfigData {
         }
         if (gui.toast.maxToasts < 0) {
             throw new ConfigData.ValidationException("gui.toast.maxToasts must be >= 0");
+        }
+        if (gui.toast.bgOpacityPercent < 0 || gui.toast.bgOpacityPercent > 100) {
+            throw new ConfigData.ValidationException(
+                    "gui.toast.bgOpacityPercent must be within [0, 100]");
         }
     }
 }

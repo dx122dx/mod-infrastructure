@@ -21,16 +21,19 @@ import java.util.List;
  * <p>静态单例：{@link #enqueue} 入队（同时显示条数受配置
  * {@code infrastructure:config/gui.toast.maxToasts} 限制，默认 0 = 无限制），
  * 由全局客户端 tick 驱动 {@link #tick()} 倒计时，超时自动出队；{@link #render} 在屏幕
- * <b>左上角</b>从上往下堆叠渲染（50% 半透明深色背景 + 类型色左边条 + 白色正文），文本按
- * {@code \n} 拆行、超宽自动换行，完整渲染不截断；入场淡入 + 左侧滑入、到期前淡出（快速档
- * 4 tick），鼠标悬浮时背景明显加亮并显示 1px 全周类型色边框；{@link #mouseClicked} 支持点击
- * toast 立即关闭（无动画）。</p>
+ * <b>左上角</b>从上往下堆叠渲染（深色背景默认 20% 透明度，可经配置
+ * {@code infrastructure:config/gui.toast.bgOpacityPercent} 调整 + 类型色左边条 + 白色正文），
+ * 文本按 {@code \n} 拆行、超宽自动换行，完整渲染不截断；入场淡入 + 左侧滑入、到期前淡出
+ * （快速档 4 tick），鼠标悬浮时背景在常态基础上加亮 40% 并显示 1px 全周类型色边框；
+ * {@link #mouseClicked} 支持点击 toast 立即关闭（无动画）。</p>
  *
  * <p>「同批」消息（一次逻辑操作内连续发送的多条）经 {@link #enqueueAll} 批量入队，
  * <b>不受条数上限挤除</b>（靠倒计时自然消失）；单条 {@link #enqueue} 仍按上限挤除最旧。</p>
  *
  * <p>渲染挂点双轨互斥：ScreenContainer 打开时由屏幕自身 render 调用本类渲染；
- * 无 GUI 时由 HudRenderCallback 兜底调用，两处不会同时触发（见 {@code Messenger} 路由）。</p>
+ * 无 GUI 时由 HudRenderCallback 兜底调用；其他 GUI（背包/暂停/聊天等非 ScreenContainer）打开时
+ * <b>不渲染</b>——1.20.1 中 HUD 回调在任意 GUI 打开时仍会触发，但 Screen 绘制在 HUD 之后，
+ * 若此时渲染会被该 GUI 背景覆盖（见 {@code Messenger} 路由与 {@code InfrastructureMod} 挂点注释）。</p>
  *
  * <p>入队即写日志：按 {@link ToastType} 的日志级别记录消息本体，调用方无需再自行记录，
  * 避免重复留痕。</p>
@@ -51,16 +54,16 @@ public final class ToastQueue {
 	private static final int LINE_GAP = 2;
 	/** 正文上下内边距。 */
 	private static final int VERTICAL_PADDING = 4;
-	/** 背景：深色半透明（50%，保证背后画面可辨、文字仍清晰）。 */
-	private static final int BG_COLOR = 0x80000000;
+	/** 背景 RGB：纯黑（alpha 由配置 gui.toast.bgOpacityPercent 决定，默认 20%）。 */
+	private static final int BG_RGB = 0x000000;
 	/** 正文颜色：纯白。 */
 	private static final int TEXT_COLOR = 0xFFFFFFFF;
 	/** 淡入/淡出过渡时长（tick，1/20 秒）。 */
 	private static final int FADE_TICKS = 4;
 	/** 左侧滑入过渡时长（tick）。 */
 	private static final int SLIDE_TICKS = 4;
-	/** 悬浮时背景加亮后的 alpha（常态 0x80 → 明显加亮 0xCC）。 */
-	private static final int HOVER_BG_ALPHA = 0xCC;
+	/** 悬浮时背景加亮增量：常态基础上 +40%（255 × 40% ≈ 0x66），封顶 255。 */
+	private static final int HOVER_BG_BOOST = 0x66;
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(ToastQueue.class);
 
@@ -133,18 +136,18 @@ public final class ToastQueue {
 	 *
 	 * <p>动画：入队后 {@link #FADE_TICKS} tick 淡入 + {@link #SLIDE_TICKS} tick 左侧
 	 * 滑入（easeOutCubic），到期前 {@link #FADE_TICKS} tick 淡出；点击关闭无动画。
-	 * 悬浮：鼠标命中时背景明显加亮（{@link #HOVER_BG_ALPHA}）并绘制 1px 全周类型色边框。</p>
+	 * 悬浮：鼠标命中时背景在常态基础上加亮 +40%（{@link #HOVER_BG_BOOST}）并绘制
+	 * 1px 全周类型色边框。</p>
 	 *
-	 * @param ctx 绘制上下文（GUI 逻辑坐标）
+	 * @param ctx    绘制上下文（GUI 逻辑坐标）
+	 * @param mouseX 鼠标逻辑坐标 X（由调用方换算：物理像素 × scaledWidth / width）
+	 * @param mouseY 鼠标逻辑坐标 Y（同上）
 	 */
-	public static void render(DrawContext ctx) {
+	public static void render(DrawContext ctx, double mouseX, double mouseY) {
 		if (QUEUE.isEmpty()) {
 			return;
 		}
 		TextRenderer tr = MinecraftClient.getInstance().textRenderer;
-		// mouse.getX()/getY() 内部已换算为逻辑坐标（x * scaledWidth / width），直接用于命中检测。
-		double mouseX = MinecraftClient.getInstance().mouse.getX();
-		double mouseY = MinecraftClient.getInstance().mouse.getY();
 		int maxWidth = maxWidthOf(ctx.getScaledWindowWidth());
 		int y = MARGIN_TOP;
 		for (Toast toast : QUEUE) {
@@ -153,9 +156,11 @@ public final class ToastQueue {
 			int alpha = alphaOf(toast);
 			boolean hover = mouseX >= x && mouseX <= x + layout.width
 					&& mouseY >= layout.y && mouseY <= layout.y + layout.height;
-			// 背景：hover 时明显加亮，其余按整体透明度淡入淡出。
-			int bgAlpha = (int) ((hover ? HOVER_BG_ALPHA : (BG_COLOR >>> 24) & 0xFF) * alpha / 255f + 0.5f);
-			ctx.fill(x, layout.y, x + layout.width, layout.y + layout.height, withAlpha(BG_COLOR, bgAlpha));
+			// 背景：常态 alpha 取配置百分比，hover 时在此基础上加亮 +40%，再随整体透明度淡入淡出。
+			int normalBgAlpha = bgOpacityAlpha();
+			int bgAlpha = (int) ((hover ? Math.min(255, normalBgAlpha + HOVER_BG_BOOST) : normalBgAlpha)
+					* alpha / 255f + 0.5f);
+			ctx.fill(x, layout.y, x + layout.width, layout.y + layout.height, withAlpha(BG_RGB, bgAlpha));
 			// 悬浮边框：1px 全周类型色（与左边条呼应）。
 			if (hover) {
 				int border = withAlpha(toast.type.accentColor(), alpha);
@@ -202,6 +207,11 @@ public final class ToastQueue {
 			y += layout.height + GAP;
 		}
 		return false;
+	}
+
+	/** 当前配置的常态背景 alpha（0-255）：百分比 × 255 / 100。 */
+	private static int bgOpacityAlpha() {
+		return InfrastructureConfigLoader.get().gui.toast.bgOpacityPercent * 255 / 100;
 	}
 
 	/** 当前配置下的单条最大宽度（屏幕逻辑宽度 × maxWidthPercent / 100）。 */

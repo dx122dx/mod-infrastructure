@@ -136,5 +136,7 @@
     "text.autoconfig.infrastructure-config.option.gui.toast.durationTicks": "Duration (ticks)",
     "text.autoconfig.infrastructure-config.option.gui.toast.durationTicks.@Tooltip": "How long a single toast stays visible (20 ticks = 1 second).",
     "text.autoconfig.infrastructure-config.option.gui.toast.maxToasts": "Max Visible Toasts",
-    "text.autoconfig.infrastructure-config.option.gui.toast.maxToasts.@Tooltip": "Maximum number of toasts shown at once (0 = unlimited); only single notifications are limited, batched ones are never evicted."
+    "text.autoconfig.infrastructure-config.option.gui.toast.maxToasts.@Tooltip": "Maximum number of toasts shown at once (0 = unlimited); only single notifications are limited, batched ones are never evicted.",
+    "text.autoconfig.infrastructure-config.option.gui.toast.bgOpacityPercent": "Background Opacity (%)",
+    "text.autoconfig.infrastructure-config.option.gui.toast.bgOpacityPercent.@Tooltip": "Background opacity of a toast as a percentage (0-100, default 20%); on hover it brightens by about +40% on top of the normal value."
 }
