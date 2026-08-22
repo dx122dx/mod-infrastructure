@@ -116,11 +116,11 @@
     "infrastructure.msg.security.audit_contributors": "(%s more policies contributed)",
     "infrastructure.msg.security.audit_cleared": "Cleared %s audit records.",
 
-    "text.autoconfig.infrastructure-debugger-config.title": "Billy's Mod infrastructure Settings",
-    "text.autoconfig.infrastructure-debugger-config.option.verboseLogging": "Verbose Logging",
-    "text.autoconfig.infrastructure-debugger-config.option.verboseLogging.@Tooltip": "Log detailed framework information, including registration details and action execution traces.",
-    "text.autoconfig.infrastructure-debugger-config.option.showActionStackTrace": "Show Stack Trace",
-    "text.autoconfig.infrastructure-debugger-config.option.showActionStackTrace.@Tooltip": "Append an exception stack trace summary (up to 5 frames) to chat when a debug action fails.",
+    "text.autoconfig.infrastructure-debugger.title": "Billy's Mod infrastructure Settings",
+    "text.autoconfig.infrastructure-debugger.option.verboseLogging": "Verbose Logging",
+    "text.autoconfig.infrastructure-debugger.option.verboseLogging.@Tooltip": "Log detailed framework information, including registration details and action execution traces.",
+    "text.autoconfig.infrastructure-debugger.option.showActionStackTrace": "Show Stack Trace",
+    "text.autoconfig.infrastructure-debugger.option.showActionStackTrace.@Tooltip": "Append an exception stack trace summary (up to 5 frames) to chat when a debug action fails.",
 
     "text.autoconfig.infrastructure-security.title": "Billy's Mod infrastructure Security Settings",
     "text.autoconfig.infrastructure-security.option.allowDebugOverride": "Allow Debug Override",

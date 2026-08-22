@@ -116,11 +116,11 @@
     "infrastructure.msg.security.audit_contributors": "（另有 %s 个策略贡献）",
     "infrastructure.msg.security.audit_cleared": "已清空 %s 条审计记录。",
 
-    "text.autoconfig.infrastructure-debugger-config.title": "Billy's Mod infrastructure 设置",
-    "text.autoconfig.infrastructure-debugger-config.option.verboseLogging": "详细日志",
-    "text.autoconfig.infrastructure-debugger-config.option.verboseLogging.@Tooltip": "输出调试框架的详细日志，包括注册明细与动作执行轨迹。",
-    "text.autoconfig.infrastructure-debugger-config.option.showActionStackTrace": "显示异常堆栈",
-    "text.autoconfig.infrastructure-debugger-config.option.showActionStackTrace.@Tooltip": "调试动作执行失败时，在聊天栏附加异常堆栈摘要（最多 5 帧）。",
+    "text.autoconfig.infrastructure-debugger.title": "Billy's Mod infrastructure 设置",
+    "text.autoconfig.infrastructure-debugger.option.verboseLogging": "详细日志",
+    "text.autoconfig.infrastructure-debugger.option.verboseLogging.@Tooltip": "输出调试框架的详细日志，包括注册明细与动作执行轨迹。",
+    "text.autoconfig.infrastructure-debugger.option.showActionStackTrace": "显示异常堆栈",
+    "text.autoconfig.infrastructure-debugger.option.showActionStackTrace.@Tooltip": "调试动作执行失败时，在聊天栏附加异常堆栈摘要（最多 5 帧）。",
 
     "text.autoconfig.infrastructure-security.title": "Billy's Mod infrastructure 安全设置",
     "text.autoconfig.infrastructure-security.option.allowDebugOverride": "允许调试覆盖",
