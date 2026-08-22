@@ -21,8 +21,10 @@ import java.util.List;
  * <p>静态单例：{@link #enqueue} 入队（同时显示条数受配置
  * {@code infrastructure:config/gui.toast.maxToasts} 限制，默认 0 = 无限制），
  * 由全局客户端 tick 驱动 {@link #tick()} 倒计时，超时自动出队；{@link #render} 在屏幕
- * <b>左上角</b>从上往下堆叠渲染（深色半透明背景 + 类型色左边条 + 白色正文），文本按
- * {@code \n} 拆行、超宽自动换行，完整渲染不截断；{@link #mouseClicked} 支持点击 toast 立即关闭。</p>
+ * <b>左上角</b>从上往下堆叠渲染（50% 半透明深色背景 + 类型色左边条 + 白色正文），文本按
+ * {@code \n} 拆行、超宽自动换行，完整渲染不截断；入场淡入 + 左侧滑入、到期前淡出（快速档
+ * 4 tick），鼠标悬浮时背景明显加亮并显示 1px 全周类型色边框；{@link #mouseClicked} 支持点击
+ * toast 立即关闭（无动画）。</p>
  *
  * <p>「同批」消息（一次逻辑操作内连续发送的多条）经 {@link #enqueueAll} 批量入队，
  * <b>不受条数上限挤除</b>（靠倒计时自然消失）；单条 {@link #enqueue} 仍按上限挤除最旧。</p>
@@ -49,10 +51,16 @@ public final class ToastQueue {
 	private static final int LINE_GAP = 2;
 	/** 正文上下内边距。 */
 	private static final int VERTICAL_PADDING = 4;
-	/** 背景：深色半透明。 */
-	private static final int BG_COLOR = 0xCC000000;
+	/** 背景：深色半透明（50%，保证背后画面可辨、文字仍清晰）。 */
+	private static final int BG_COLOR = 0x80000000;
 	/** 正文颜色：纯白。 */
 	private static final int TEXT_COLOR = 0xFFFFFFFF;
+	/** 淡入/淡出过渡时长（tick，1/20 秒）。 */
+	private static final int FADE_TICKS = 4;
+	/** 左侧滑入过渡时长（tick）。 */
+	private static final int SLIDE_TICKS = 4;
+	/** 悬浮时背景加亮后的 alpha（常态 0x80 → 明显加亮 0xCC）。 */
+	private static final int HOVER_BG_ALPHA = 0xCC;
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(ToastQueue.class);
 
@@ -109,15 +117,23 @@ public final class ToastQueue {
 	}
 
 	/**
-	 * 队列 tick 驱动：逐条递减剩余时长，超时出队。由全局 {@code ClientTickEvents.END_CLIENT_TICK} 调用。
+	 * 队列 tick 驱动：逐条递增存活时长并递减剩余时长，超时出队。
+	 * 由全局 {@code ClientTickEvents.END_CLIENT_TICK} 调用。
 	 */
 	public static void tick() {
-		QUEUE.removeIf(t -> --t.remainingTicks <= 0);
+		QUEUE.removeIf(t -> {
+			t.age++;
+			return --t.remainingTicks <= 0;
+		});
 	}
 
 	/**
 	 * 渲染所有 toast（左上角堆叠）。GUI 打开时由 ScreenContainer.render 调用，
 	 * 无 GUI 时由 HudRenderCallback 调用（两处互斥，见 {@code Messenger}）。
+	 *
+	 * <p>动画：入队后 {@link #FADE_TICKS} tick 淡入 + {@link #SLIDE_TICKS} tick 左侧
+	 * 滑入（easeOutCubic），到期前 {@link #FADE_TICKS} tick 淡出；点击关闭无动画。
+	 * 悬浮：鼠标命中时背景明显加亮（{@link #HOVER_BG_ALPHA}）并绘制 1px 全周类型色边框。</p>
 	 *
 	 * @param ctx 绘制上下文（GUI 逻辑坐标）
 	 */
@@ -126,15 +142,34 @@ public final class ToastQueue {
 			return;
 		}
 		TextRenderer tr = MinecraftClient.getInstance().textRenderer;
+		// mouse.getX()/getY() 内部已换算为逻辑坐标（x * scaledWidth / width），直接用于命中检测。
+		double mouseX = MinecraftClient.getInstance().mouse.getX();
+		double mouseY = MinecraftClient.getInstance().mouse.getY();
 		int maxWidth = maxWidthOf(ctx.getScaledWindowWidth());
 		int y = MARGIN_TOP;
 		for (Toast toast : QUEUE) {
 			Layout layout = layout(tr, toast, maxWidth, y);
-			ctx.fill(layout.x, layout.y, layout.x + layout.width, layout.y + layout.height, BG_COLOR);
-			ctx.fill(layout.x, layout.y, layout.x + BAR_WIDTH, layout.y + layout.height, toast.type.accentColor());
-			int textY = y + VERTICAL_PADDING;
+			int x = layout.x - slideOffset(toast, layout.width);
+			int alpha = alphaOf(toast);
+			boolean hover = mouseX >= x && mouseX <= x + layout.width
+					&& mouseY >= layout.y && mouseY <= layout.y + layout.height;
+			// 背景：hover 时明显加亮，其余按整体透明度淡入淡出。
+			int bgAlpha = (int) ((hover ? HOVER_BG_ALPHA : (BG_COLOR >>> 24) & 0xFF) * alpha / 255f + 0.5f);
+			ctx.fill(x, layout.y, x + layout.width, layout.y + layout.height, withAlpha(BG_COLOR, bgAlpha));
+			// 悬浮边框：1px 全周类型色（与左边条呼应）。
+			if (hover) {
+				int border = withAlpha(toast.type.accentColor(), alpha);
+				ctx.fill(x, layout.y, x + layout.width, layout.y + 1, border);
+				ctx.fill(x, layout.y + layout.height - 1, x + layout.width, layout.y + layout.height, border);
+				ctx.fill(x, layout.y + 1, x + 1, layout.y + layout.height - 1, border);
+				ctx.fill(x + layout.width - 1, layout.y + 1, x + layout.width, layout.y + layout.height - 1, border);
+			}
+			// 类型色左边条（随整体透明度淡入淡出）。
+			ctx.fill(x, layout.y, x + BAR_WIDTH, layout.y + layout.height, withAlpha(toast.type.accentColor(), alpha));
+			// 正文（带阴影，随整体透明度淡入淡出）。
+			int textY = layout.y + VERTICAL_PADDING;
 			for (OrderedText line : layout.lines) {
-				ctx.drawText(tr, line, layout.x + BAR_WIDTH + TEXT_PADDING, textY, TEXT_COLOR, true);
+				ctx.drawText(tr, line, x + BAR_WIDTH + TEXT_PADDING, textY, withAlpha(TEXT_COLOR, alpha), true);
 				textY += tr.fontHeight + LINE_GAP;
 			}
 			y += layout.height + GAP;
@@ -157,7 +192,9 @@ public final class ToastQueue {
 		int y = MARGIN_TOP;
 		for (Toast toast : QUEUE) {
 			Layout layout = layout(tr, toast, maxWidth, y);
-			if (mouseX >= layout.x && mouseX <= layout.x + layout.width
+			// 命中矩形与 render 一致（含滑入偏移），避免动画期间点击错位。
+			int x = layout.x - slideOffset(toast, layout.width);
+			if (mouseX >= x && mouseX <= x + layout.width
 					&& mouseY >= layout.y && mouseY <= layout.y + layout.height) {
 				QUEUE.remove(toast);
 				return true;
@@ -208,11 +245,13 @@ public final class ToastQueue {
 	private record Layout(int x, int y, int width, int height, List<OrderedText> lines) {
 	}
 
-	/** 单条 toast 数据（可变剩余时长，由 tick 驱动递减）。 */
+	/** 单条 toast 数据（可变存活时长与剩余时长，由 tick 驱动同步增减）。 */
 	private static final class Toast {
 
 		final Text message;
 		final ToastType type;
+		/** 自入队起经过的 tick 数（驱动淡入/滑入动画）。 */
+		int age;
 		int remainingTicks;
 
 		Toast(Text message, ToastType type) {
@@ -221,5 +260,32 @@ public final class ToastQueue {
 			// 入队时现取配置，已入队条目不刷新时长。
 			this.remainingTicks = InfrastructureConfigLoader.get().gui.toast.durationTicks;
 		}
+	}
+
+	/**
+	 * 整体透明度（0..255）：取淡入与淡出进度的较小者（双重限制），
+	 * 淡入 = 存活时长 / FADE_TICKS，淡出 = 剩余时长 / FADE_TICKS。
+	 */
+	private static int alphaOf(Toast toast) {
+		float fadeIn = Math.min(1f, (float) toast.age / FADE_TICKS);
+		float fadeOut = Math.min(1f, (float) toast.remainingTicks / FADE_TICKS);
+		return (int) (Math.min(fadeIn, fadeOut) * 255f + 0.5f);
+	}
+
+	/** 左侧滑入的水平偏移量（像素）：动画期间从屏外滑入到位，动画结束为 0。 */
+	private static int slideOffset(Toast toast, int width) {
+		float t = Math.min(1f, (float) toast.age / SLIDE_TICKS);
+		return (int) ((1f - easeOutCubic(t)) * (width + MARGIN_LEFT));
+	}
+
+	/** easeOutCubic 缓动：t∈[0,1]，先快后慢，末端平滑停止。 */
+	private static float easeOutCubic(float t) {
+		float u = 1f - t;
+		return 1f - u * u * u;
+	}
+
+	/** 替换 ARGB 颜色的 alpha 通道（保留 RGB）。 */
+	private static int withAlpha(int color, int alpha) {
+		return (color & 0x00FFFFFF) | ((alpha & 0xFF) << 24);
 	}
 }
