@@ -37,7 +37,7 @@ public final class InfrastructureModule implements IModule {
      *
      * <p>与宿主模组的 {@code mod_version} 解耦：改动本模块时手工递增本常量。</p>
      */
-    private static final String VERSION = "20260821.1";
+    private static final String VERSION = "20260822.1";
 
     /** 供 Java SPI 实例化；登记由 {@code ModuleRegistry.discover()} 统一触发。 */
     public InfrastructureModule() {}

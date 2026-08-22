@@ -203,8 +203,6 @@ public class ScreenContainer extends SpruceScreen {
 	public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
 		if (this.fatalError != null) {
 			this.renderErrorState(ctx, mouseX, mouseY, delta);
-			// 错误隔离态同样保留 toast 渲染（消息通知与错误展示不冲突）
-			ToastQueue.render(ctx, mouseX, mouseY);
 			return;
 		}
 		this.renderBackground(ctx);
@@ -216,7 +214,6 @@ public class ScreenContainer extends SpruceScreen {
 			}
 		}
 		Tooltip.renderAll(ctx);
-		ToastQueue.render(ctx, mouseX, mouseY);
 	}
 
 	@Override
